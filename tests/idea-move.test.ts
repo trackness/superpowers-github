@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, commentsPage, type ItemSpec, repoData, router, type Spawned, url, workData, type World } from './kit.ts'
+import { argvs, boot, callTool, commentsPage, type ItemSpec, type Reply, repoData, router, type Spawned, url, workData, type World } from './kit.ts'
 
 const [IDEAS, APP, SITE] = ['trackness/ideas', 'trackness/app', 'trackness/site']
 const OLD = url(5, IDEAS)
@@ -23,8 +23,8 @@ const edit = (n: number, repo: string, s: string) => `gh project item-edit 2 --o
 const issueCalls = (w: World, verb: string) => w.spawned.filter(s => s.argv[1] === 'issue' && s.argv[2] === verb)
 
 // The idea is #5 in Designed on the ideas board, with two pages of comments. A transfer answers app#3 (not on app's board); a create answers site#4.
-// `fail` names the gh verb (transfer, item-edit, comment…) that exits 1.
-const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partial<ItemSpec>; fail?: string } = {}) =>
+// `fail` names the gh verb (transfer, item-edit, comment…) that exits 1; `gh issue list` answers `list`.
+const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partial<ItemSpec>; fail?: string; list?: Reply } = {}) =>
   router({
     graphql: {
       Repo: v => REPOS[v.name],
@@ -41,7 +41,7 @@ const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partia
       if (sub === 'extension') return { stdout: 'gh image\tdrogers0/gh-image\tv1.4.1\n' }
       if (sub === 'image') return verb === 'download' ? {} : { stdout: verb!.endsWith('/idea.md') ? `[idea.md](${NEW_MD})\n` : `![s.png](${NEW_PNG})\n` }
       if (sub === 'project') return {}
-      if (sub === 'issue') return verb === 'transfer' ? { stdout: url(3, APP) + '\n' } : verb === 'create' ? { stdout: url(4, SITE) + '\n' } : {}
+      if (sub === 'issue') return verb === 'transfer' ? { stdout: url(3, APP) + '\n' } : verb === 'create' ? { stdout: url(4, SITE) + '\n' } : verb === 'list' ? (o.list ?? { stdout: '[]' }) : {}
       return undefined
     },
   })
@@ -103,6 +103,20 @@ test('a public move that fails after the create names the new issue and creates 
   expect(r.deny).toContain('HTTP 502')
   expect(r.deny).toContain('Not retried')
   expect(issueCalls(w, 'create')).toHaveLength(1)
+  expect(issueCalls(w, 'comment')).toEqual([])
+  expect(issueCalls(w, 'close')).toEqual([])
+})
+
+test('a public move whose create made the issue before failing names it and goes no further', async ($, on) => {
+  const list = { stdout: JSON.stringify([{ number: 4, title: 'My idea', url: url(4, SITE), createdAt: new Date().toISOString() }]) }
+  const w = await boot($, on, { reply: world({ fail: 'create', list }) })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: SITE })
+  expect(r.deny).toContain(`created ${url(4, SITE)}, then gh's own --parent/--blocked-by/--project step failed`)
+  expect(r.deny).toContain('HTTP 502')
+  expect(r.deny).toContain('Not retried')
+  expect(argvs(w)).toContain(`gh issue list -R ${SITE} --author @me --state open --limit 20 --json number,title,url,createdAt`)
+  expect(issueCalls(w, 'create')).toHaveLength(1)
+  expect(argvs(w).some(a => a.startsWith('gh project item-edit'))).toBe(false)
   expect(issueCalls(w, 'comment')).toEqual([])
   expect(issueCalls(w, 'close')).toEqual([])
 })

@@ -1,4 +1,4 @@
-import { assertWritable, created, failedAfter, link, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
+import { assertWritable, created, createIssue, failedAfter, link, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { attachmentUrls, checkBody } from '../body.ts'
 import { IDEAS_REPO, TMP_ROOT } from '../config.ts'
 import { gh, graphqlPages, parseIssue, ToolError } from '../gh.ts'
@@ -80,7 +80,7 @@ export const ideaMoveTool: Tool = {
     if (left.length) throw new ToolError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they weren't uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
     checkBody(body)
 
-    const url = (await gh(io, ['issue', 'create', '-R', dest.repo, '--project', board.title, '--title', issue.title, '--body-file', '-'], { input: body })).trim().split('\n').pop()!
+    const url = await createIssue(io, dest.repo, board.title, issue.title, body)
     let step = 'reading the new issue\'s URL'
     try {
       const recreated = created(url, issue.title, body)

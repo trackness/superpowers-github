@@ -1,7 +1,7 @@
-import { assertWritable, type Board, created, failedAfter, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
+import { assertWritable, type Board, created, createIssue, failedAfter, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { checkBody } from '../body.ts'
 import { type Status } from '../config.ts'
-import { gh, ToolError } from '../gh.ts'
+import { ToolError } from '../gh.ts'
 import { nums, optStr, str, type Tool } from '../tools.ts'
 
 export const issueCreateTool: Tool = {
@@ -43,11 +43,8 @@ export const issueCreateTool: Tool = {
       assertWritable(info)
     }
     if (work) assertWritable(work.repo)
-    const args = ['issue', 'create', '-R', repo]
-    if (work) args.push('--parent', String(work.issue.number), ...(blockedBy.length ? ['--blocked-by', blockedBy.join(',')] : []))
-    args.push('--project', board.title, '--title', title, '--body-file', '-')
-    const out = await gh(io, args, { input: body })
-    const url = out.trim().split('\n').pop()!
+    const links = work ? ['--parent', String(work.issue.number), ...(blockedBy.length ? ['--blocked-by', blockedBy.join(',')] : [])] : []
+    const url = await createIssue(io, repo, board.title, title, body, links)
     let step = 'reading the new issue\'s URL'
     try {
       const issue = created(url, title, body)

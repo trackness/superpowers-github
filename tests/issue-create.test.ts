@@ -1,18 +1,25 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, DEMO, repoData, router, url, workData, type World } from './kit.ts'
+import { argvs, boot, callTool, DEMO, type Reply, repoData, router, url, workData, type World } from './kit.ts'
 
 const edit = (n: number, s: string) => `gh project item-edit 1 --owner trackness --url ${url(n)} --field Status --value ${s}`
 const creates = (w: World) => w.spawned.filter(s => s.argv[2] === 'create')
 
-// Answers `Repo` and `Work` (#10, Designed, no tasks); `gh issue create` answers #13; other `gh project` calls answer `{}`.
-const world = (o: { repo?: unknown; fail?: boolean } = {}) =>
+// Answers `Repo` and `Work` (#10, Designed, no tasks); `gh issue create` answers #13 (or `create`), `gh issue list` answers `list`; other `gh project` calls answer `{}`.
+const world = (o: { repo?: unknown; fail?: boolean; create?: Reply; list?: Reply } = {}) =>
   router({
     graphql: { Repo: () => o.repo ?? repoData({}), Work: () => workData({ issue: { number: 10, status: 'Designed' } }) },
     cli: s =>
-      s.argv[1] === 'issue' ? { stdout: url(13) + '\n' }
+      s.argv[1] === 'issue' ? (s.argv[2] === 'list' ? (o.list ?? { stdout: '[]' }) : (o.create ?? { stdout: url(13) + '\n' }))
       : s.argv[1] === 'project' ? (o.fail && s.argv[2] === 'item-edit' ? { code: 1, stderr: 'HTTP 502' } : {})
       : undefined,
   })
+
+// gh created the issue, then its own --project step failed: it exits 1 without printing the URL.
+const partial: Reply = { code: 1, stderr: 'GraphQL: could not add to project' }
+const listed = (...issues: { n: number; title: string; at: string }[]): Reply => ({ stdout: JSON.stringify(issues.map(i => ({ number: i.n, title: i.title, url: url(i.n), createdAt: i.at }))) })
+const LIST = 'gh issue list -R trackness/demo --author @me --state open --limit 20 --json number,title,url,createdAt'
+const OLD = '2020-01-01T00:00:00Z'
+const MAY_EXIST = 'gh creates the issue before applying --parent, --blocked-by and --project, so it may already exist: check `gh issue list -R trackness/demo --author @me` before calling again.'
 
 const idea = (body: string) => ({ repo: DEMO, title: 'Idea', body })
 
@@ -63,6 +70,39 @@ test('issue_create reports the created issue when a later step fails', async ($,
   expect(r.deny).toContain('item-edit')
   expect(r.deny).toContain('HTTP 502')
   expect(r.deny).toContain('Not retried')
+  expect(creates(w)).toHaveLength(1)
+})
+
+test('issue_create names the issue gh created before its own later step failed', async ($, on) => {
+  const list = listed({ n: 13, title: 'Task 3: Store', at: new Date().toISOString() }, { n: 12, title: 'Task 3: Store', at: OLD })
+  const w = await boot($, on, { reply: world({ create: partial, list }) })
+  const r = await callTool($, 'issue_create', { parent: url(10), title: 'Task 3: Store', body: 'b', blockedBy: [11] })
+  expect(r.deny).toContain(`created ${url(13)}, then gh's own --parent/--blocked-by/--project step failed`)
+  expect(r.deny).toContain('could not add to project')
+  expect(r.deny).toContain('Not retried')
+  expect(r.deny).not.toContain(url(12))
+  expect(argvs(w)).toContain(LIST)
+  expect(creates(w)).toHaveLength(1)
+  expect(argvs(w).some(a => a.startsWith('gh project'))).toBe(false)
+})
+
+test('issue_create warns that a failed create may have made the issue when none matches', async ($, on) => {
+  const list = listed({ n: 13, title: 'Other', at: new Date().toISOString() }, { n: 12, title: 'Idea', at: OLD })
+  const w = await boot($, on, { reply: world({ create: partial, list }) })
+  const r = await callTool($, 'issue_create', idea('b'))
+  expect(r.deny).toContain('could not add to project')
+  expect(r.deny).toContain(MAY_EXIST)
+  expect(r.deny).not.toContain(url(12))
+  expect(r.deny).not.toContain(url(13))
+  expect(creates(w)).toHaveLength(1)
+})
+
+test('issue_create warns that a failed create may have made the issue when the lookup fails', async ($, on) => {
+  const w = await boot($, on, { reply: world({ create: partial, list: { code: 1, stderr: 'HTTP 502' } }) })
+  const r = await callTool($, 'issue_create', idea('b'))
+  expect(r.deny).toContain('could not add to project')
+  expect(r.deny).toContain(MAY_EXIST)
+  expect(argvs(w)).toContain(LIST)
   expect(creates(w)).toHaveLength(1)
 })
 

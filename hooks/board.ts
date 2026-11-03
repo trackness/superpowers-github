@@ -17,6 +17,22 @@ export const created = (url: string, title: string, body: string): Item => ({ ..
 export const failedAfter = (done: string, step: string, err: unknown, again = 'create the issue') =>
   new ToolError(`${done}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't ${again} again.`)
 
+// `gh issue create` creates the issue, then applies --project, --parent and --blocked-by, and exits non-zero without
+// printing the URL when one of those fails: so a failed create looks for the issue it may have made.
+export async function createIssue(io: Io, repo: string, project: string, title: string, body: string, links: string[] = []): Promise<string> {
+  const since = Date.now() - 2 * 60_000 // GitHub's clock may run behind ours
+  try {
+    return (await gh(io, ['issue', 'create', '-R', repo, ...links, '--project', project, '--title', title, '--body-file', '-'], { input: body })).trim().split('\n').pop()!
+  } catch (err) {
+    // No --search: the search index can lag behind a new issue.
+    const made = await gh(io, ['issue', 'list', '-R', repo, '--author', '@me', '--state', 'open', '--limit', '20', '--json', 'number,title,url,createdAt'])
+      .then(out => (JSON.parse(out) as { title: string; url: string; createdAt: string }[]).find(i => i.title === title && Date.parse(i.createdAt) >= since))
+      .catch(() => undefined)
+    if (made) throw failedAfter(`created ${made.url}`, "gh's own --parent/--blocked-by/--project step", err)
+    throw new ToolError(`${err instanceof Error ? err.message : err}. gh creates the issue before applying --parent, --blocked-by and --project, so it may already exist: check \`gh issue list -R ${repo} --author @me\` before calling again.`)
+  }
+}
+
 // shortcut: reads the first 100 boards linked to the repo; page through them if a repo ever links more.
 const REPO = `query Repo($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
