@@ -117,7 +117,7 @@ export function closingData(o: { body: string; closes: number[]; repo?: string }
 // One page of the answer to op `Items`; another page follows when `endCursor` is given.
 export function itemsPage(items: ItemSpec[], endCursor?: string): unknown {
   const nodes = items.map(s => ({ status: s.status ? { name: s.status } : null, content: { number: s.number, title: titleOf(s), url: url(s.number), closed: s.closed ?? false } }))
-  return { viewer: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
+  return { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
 }
 
 // One page of the answer to op `Comments`; another page follows when `endCursor` is given.

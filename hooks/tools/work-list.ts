@@ -3,16 +3,18 @@ import { IDEAS_REPO } from '../config.ts'
 import { graphqlPages, ToolError } from '../gh.ts'
 import { optStr, str, type Tool } from '../tools.ts'
 
-// `viewer`: every board is created under the repo owner's login, which is the signed-in gh user (ruling R6).
-const ITEMS = `query Items($number: Int!, $after: String) {
-  viewer {
-    projectV2(number: $number) {
-      items(first: 100, after: $after) {
-        nodes {
-          status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-          content { ... on Issue { number title url closed } }
+// The board's owner is a user or an organization, and both are a ProjectV2Owner.
+const ITEMS = `query Items($owner: String!, $number: Int!, $after: String) {
+  repositoryOwner(login: $owner) {
+    ... on ProjectV2Owner {
+      projectV2(number: $number) {
+        items(first: 100, after: $after) {
+          nodes {
+            status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+            content { ... on Issue { number title url closed } }
+          }
+          pageInfo { hasNextPage endCursor }
         }
-        pageInfo { hasNextPage endCursor }
       }
     }
   }
@@ -36,7 +38,12 @@ export const workListTool: Tool = {
     if (status !== 'Idea' && status !== 'Designed') throw new ToolError('status must be Idea or Designed')
     const info = await repoInfo(io, optStr(input, 'repo') ?? (await currentRepo(io)) ?? IDEAS_REPO)
     if (!info.board) return `${info.repo} has no board yet.`
-    const items = await graphqlPages<any>(io, 'Items', ITEMS, { number: info.board.number }, d => d.viewer.projectV2.items)
+    const { owner, number, url } = info.board
+    const items = await graphqlPages<any>(io, 'Items', ITEMS, { owner, number }, d => {
+      // A login GitHub no longer knows answers null, with no error.
+      if (!d.repositoryOwner?.projectV2) throw new ToolError(`GitHub found no board ${number} of ${owner} (${url}), the board linked to ${info.repo}.`)
+      return d.repositoryOwner.projectV2.items
+    })
     const lines = items.filter(i => i?.content?.number && !i.content.closed && i.status?.name === status).map(i => `- ${link(i.content)}`)
     return lines.length ? lines.join('\n') : `No issues in ${status} on ${info.repo}'s board.`
   },

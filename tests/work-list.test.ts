@@ -19,7 +19,17 @@ test('work_list lists open issues in the column across every page', async ($, on
   expect(res.text).not.toContain('#2 ')
   expect(res.text).not.toContain('#4 ')
   expect(r.seen.Repo).toEqual([{ owner: 'trackness', name: 'demo' }])
-  expect(r.seen.Items).toEqual([{ number: 1, after: null }, { number: 1, after: 'c1' }])
+  expect(r.seen.Items).toEqual([{ owner: 'trackness', number: 1, after: null }, { owner: 'trackness', number: 1, after: 'c1' }])
+})
+
+test("work_list reads an organization's board through its owner, and refuses one GitHub can't find", async ($, on) => {
+  const org = { number: 4, title: 'app', url: 'https://github.com/orgs/acme/projects/4', owner: { login: 'acme' } }
+  const r = router({ graphql: { Repo: () => ({ repository: { nameWithOwner: 'acme/app', isPrivate: true, projectsV2: { nodes: [org] } } }), Items: () => ({ repositoryOwner: null }) } })
+  await boot($, on, { reply: r })
+  const res = await callTool($, 'work_list', { status: 'Idea', repo: 'acme/app' })
+  expect(r.seen.Items).toEqual([{ owner: 'acme', number: 4, after: null }])
+  expect(res.deny).toContain(org.url)
+  expect(res.deny).not.toContain('work_list failed')
 })
 
 test('work_list falls back to the ideas repo outside a GitHub repo', async ($, on) => {
