@@ -10,6 +10,13 @@ export const NOT_DONE = `only GitHub's "Item closed" workflow moves an issue to 
 
 export const link = (i: { number: number; title: string; url: string }) => `[#${i.number} ${i.title}](${i.url})`
 
+// The new issue is on the board already: `gh issue create --project` added it.
+export const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: true, blockedBy: [], blocking: [] })
+
+// A step that fails after a write that must not happen twice: name the write and the step, so nothing is written again.
+export const failedAfter = (done: string, step: string, err: unknown, again = 'create the issue') =>
+  new ToolError(`${done}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't ${again} again.`)
+
 // shortcut: reads the first 100 boards linked to the repo; page through them if a repo ever links more.
 const REPO = `query Repo($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {

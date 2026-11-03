@@ -28,6 +28,7 @@ export async function upload(io: Io, file: string, repo: string): Promise<Ref> {
 }
 
 export async function download(io: Io, ref: Ref, dir: string): Promise<string> {
+  await checkGhImage(io)
   await runOk(io, ['mkdir', '-p', dir])
   const base = ref.name.split('/').pop()
   const out = `${dir}/${base && base !== '.' && base !== '..' ? base : 'attachment'}`

@@ -1,11 +1,8 @@
-import { assertWritable, type Board, type Item, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
+import { assertWritable, type Board, created, failedAfter, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { checkBody } from '../body.ts'
 import { type Status } from '../config.ts'
-import { gh, type Io, parseIssue, ToolError } from '../gh.ts'
+import { gh, ToolError } from '../gh.ts'
 import { nums, optStr, str, type Tool } from '../tools.ts'
-
-// The new issue is on the board already: `--project` added it.
-const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: true, blockedBy: [], blocking: [] })
 
 export const issueCreateTool: Tool = {
   spec: {
@@ -64,7 +61,7 @@ export const issueCreateTool: Tool = {
       const moved = await recomputeParent(io, work, { number: issue.number, status: 'Todo' })
       return [`Created [#${issue.number} ${title}](${url}) in Todo.`, moved].filter(Boolean).join('\n')
     } catch (err) {
-      throw new ToolError(`created ${url}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't create the issue again.`)
+      throw failedAfter(`created ${url}`, step, err)
     }
   },
 }

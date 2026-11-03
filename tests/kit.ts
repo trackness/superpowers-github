@@ -114,6 +114,11 @@ export function itemsPage(items: ItemSpec[], endCursor?: string): unknown {
   return { viewer: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
 }
 
+// One page of the answer to op `Comments`; another page follows when `endCursor` is given.
+export function commentsPage(bodies: string[], endCursor?: string): unknown {
+  return { repository: { issue: { comments: { nodes: bodies.map(body => ({ body })), pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
+}
+
 // What `gh project create --format json` prints for board <n>, cut to the keys board_setup reads.
 export const projectJson = (number: number): Reply => ({ stdout: JSON.stringify({ number, id: `P${number}`, url: boardUrl(number) }) })
 
