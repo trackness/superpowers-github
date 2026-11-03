@@ -2,6 +2,7 @@ import type { Register } from 'claude-code'
 import { brainstorming } from './patches/brainstorming.ts'
 import { registerPatches } from './patches/engine.ts'
 import { executingPlans } from './patches/executing-plans.ts'
+import { finishing } from './patches/finishing.ts'
 import { subagentDrivenDevelopment } from './patches/subagent-driven-development.ts'
 import { writingPlans } from './patches/writing-plans.ts'
 import { registerTools } from './tools.ts'
@@ -19,5 +20,5 @@ import { workListTool } from './tools/work-list.ts'
 
 export const register: Register = on => {
   registerTools(on, [runFolderTool, reviewPackageTool, statusTool, workListTool, issueCreateTool, issueEditTool, attachTool, designWriteTool, boardSetupTool, ideaMoveTool, prCheckTool])
-  registerPatches(on, [executingPlans, brainstorming, writingPlans, subagentDrivenDevelopment])
+  registerPatches(on, [executingPlans, brainstorming, writingPlans, subagentDrivenDevelopment, finishing])
 }
