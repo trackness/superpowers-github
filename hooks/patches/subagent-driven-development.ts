@@ -244,7 +244,10 @@ implementation.`,
   \`Plan change:\` as **Rulings, not stalls** says. The fix dispatch names
   each edited sub-issue so the implementer re-reads it. Do not dismiss the
   finding because the plan mandates it, and never dispatch a fix that
-  contradicts the plan's text — fix the text first.`,
+  contradicts the plan's text — fix the text first. When the spec backs the
+  plan's text, the finding is not a plan defect: rule on it as **Rulings,
+  not stalls** says, ledger the \`Ruling:\`, and leave the plan as it is —
+  that ruling closes the finding.`,
       ifMissing: 'a reviewer finding against the plan is ruled around instead of fixed',
     },
     {
