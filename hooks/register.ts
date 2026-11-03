@@ -3,6 +3,7 @@ import { registerPatches } from './patches/engine.ts'
 import { executingPlans } from './patches/executing-plans.ts'
 import { registerTools } from './tools.ts'
 import { attachTool } from './tools/attach.ts'
+import { boardSetupTool } from './tools/board-setup.ts'
 import { designWriteTool } from './tools/design-write.ts'
 import { issueCreateTool } from './tools/issue-create.ts'
 import { issueEditTool } from './tools/issue-edit.ts'
@@ -12,6 +13,6 @@ import { statusTool } from './tools/status.ts'
 import { workListTool } from './tools/work-list.ts'
 
 export const register: Register = on => {
-  registerTools(on, [runFolderTool, reviewPackageTool, statusTool, workListTool, issueCreateTool, issueEditTool, attachTool, designWriteTool])
+  registerTools(on, [runFolderTool, reviewPackageTool, statusTool, workListTool, issueCreateTool, issueEditTool, attachTool, designWriteTool, boardSetupTool])
   registerPatches(on, [executingPlans])
 }

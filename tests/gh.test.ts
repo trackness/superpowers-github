@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { parseIssue } from '../hooks/gh.ts'
-import { nums, optStr, str } from '../hooks/tools.ts'
+import { bool, nums, optStr, str } from '../hooks/tools.ts'
 import { boot, callTool, url } from './kit.ts'
 
 test('parseIssue reads a URL, a URL with a fragment and owner/repo#n alike', () => {
@@ -32,4 +32,7 @@ test('the input readers name the key on a wrong type', () => {
   expect(nums({}, 'blockedBy')).toEqual([])
   expect(nums({ blockedBy: [3, 4] }, 'blockedBy')).toEqual([3, 4])
   expect(() => nums({ blockedBy: [3, '4'] }, 'blockedBy')).toThrow('blockedBy')
+  expect(bool({}, 'repair')).toBe(false)
+  expect(bool({ repair: true }, 'repair')).toBe(true)
+  expect(() => bool({ repair: 'yes' }, 'repair')).toThrow('repair')
 })

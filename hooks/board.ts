@@ -36,13 +36,18 @@ query Work($owner: String!, $name: String!, $number: Int!) {
   }
 }`
 
-export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
+export function splitRepo(repo: string): [owner: string, name: string] {
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(repo)
   if (!m) throw new ToolError(`Give the repo as <owner>/<name>, not "${repo}".`)
-  const { repository: r } = await graphql<any>(io, 'Repo', REPO, { owner: m[1], name: m[2] })
+  return [m[1]!, m[2]!]
+}
+
+export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
+  const [owner, name] = splitRepo(repo)
+  const { repository: r } = await graphql<any>(io, 'Repo', REPO, { owner, name })
   // GitHub's spelling of the name, so a differently cased input still finds the board and the ideas repo.
-  const name = r.nameWithOwner.split('/')[1]
-  const p = r.projectsV2.nodes.find((p: any) => p?.title === name)
+  const title = r.nameWithOwner.split('/')[1]
+  const p = r.projectsV2.nodes.find((p: any) => p?.title === title)
   return { repo: r.nameWithOwner, isPrivate: r.isPrivate, board: p && { owner: p.owner.login, number: p.number, title: p.title, url: p.url } }
 }
 

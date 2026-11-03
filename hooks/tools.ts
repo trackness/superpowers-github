@@ -24,6 +24,13 @@ export function nums(input: Record<string, unknown>, key: string): number[] {
   return value
 }
 
+export function bool(input: Record<string, unknown>, key: string): boolean {
+  const value = input[key]
+  if (value == null) return false
+  if (typeof value !== 'boolean') throw new ToolError(`${key} must be true or false`)
+  return value
+}
+
 export function registerTools(on: On, tools: Tool[]): void {
   on('session.start', async ($, e, next) => {
     for (const t of tools) await $.tool.register(t.spec)

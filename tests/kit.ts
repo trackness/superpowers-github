@@ -113,3 +113,18 @@ export function itemsPage(items: ItemSpec[], endCursor?: string): unknown {
   const nodes = items.map(s => ({ status: s.status ? { name: s.status } : null, content: { number: s.number, title: titleOf(s), url: url(s.number), closed: s.closed ?? false } }))
   return { viewer: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
 }
+
+// What `gh project create --format json` prints for board <n>, cut to the keys board_setup reads.
+export const projectJson = (number: number): Reply => ({ stdout: JSON.stringify({ number, id: `P${number}`, url: boardUrl(number) }) })
+
+const project = (p: unknown) => ({ repositoryOwner: { projectV2: p } })
+
+// The answer to op `Fields`: project P1's Status field F1, each option with the id `id-<name>`.
+export const fieldsData = (options: string[]): unknown => project({ id: 'P1', field: { id: 'F1', options: options.map(name => ({ id: `id-${name}`, name })) } })
+
+// The answer to op `Views`: one view per layout.
+export const viewsData = (layouts: string[]): unknown => project({ views: { nodes: layouts.map(layout => ({ layout })) } })
+
+// The answer to op `Workflows`: each workflow with the id `wf-<name>`; a name left out is absent (deleted).
+export const workflowsData = (enabled: Record<string, boolean>): unknown =>
+  project({ workflows: { nodes: Object.entries(enabled).map(([name, on]) => ({ id: `wf-${name}`, name, enabled: on })) } })
