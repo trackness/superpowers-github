@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { TOOL_PREFIX } from '../hooks/config.ts'
+import { type Status, TOOL_PREFIX } from '../hooks/config.ts'
 
 export const DEMO = 'trackness/demo'
 export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issues/${n}`
@@ -74,4 +74,42 @@ export function router(r: { graphql?: Record<string, (variables: any) => unknown
     return { code: 1, stderr: `unrouted: ${s.argv.join(' ')}` }
   }
   return Object.assign(reply, { seen })
+}
+
+export type ItemSpec = { number: number; status?: Status; closed?: boolean; title?: string; body?: string; onBoard?: boolean; blockedBy?: number[]; blocking?: number[] }
+
+const boardUrl = (n: number) => `https://github.com/users/trackness/projects/${n}`
+const titleOf = (s: ItemSpec) => s.title ?? `Task ${s.number}: T${s.number}`
+const numbers = (ns: number[] = []) => ({ nodes: ns.map(number => ({ number })) })
+
+// The answer to op `Repo`: boards numbered from 1 in order, every one owned by trackness.
+export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: string[] }): unknown {
+  const repo = o.repo ?? DEMO
+  const boards = o.boards ?? [repo.split('/')[1]!]
+  const nodes = boards.map((title, i) => ({ number: i + 1, title, url: boardUrl(i + 1), owner: { login: 'trackness' } }))
+  return { repository: { nameWithOwner: repo, isPrivate: o.isPrivate ?? true, projectsV2: { nodes } } }
+}
+
+// The answer to op `Work`: with `parent` the issue is a task and `tasks` are the parent's sub-issues; otherwise they are the issue's own.
+export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; board?: number; repo?: string }): unknown {
+  const [repo, board, tasks] = [o.repo ?? DEMO, o.board ?? 1, o.tasks ?? []]
+  const issue = (s: ItemSpec) => ({
+    number: s.number,
+    url: url(s.number, repo),
+    title: titleOf(s),
+    closed: s.closed ?? false,
+    body: s.body ?? '',
+    blockedBy: numbers(s.blockedBy),
+    blocking: numbers(s.blocking),
+    projectItems: { nodes: s.onBoard === false ? [] : [{ project: { url: boardUrl(board) }, status: s.status ? { name: s.status } : null }] },
+  })
+  const subIssues = (specs: ItemSpec[]) => ({ nodes: specs.map(issue) })
+  const parent = o.parent ? { ...issue(o.parent), subIssues: subIssues(tasks) } : null
+  return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.parent ? [] : tasks), parent } } }
+}
+
+// One page of the answer to op `Items`; another page follows when `endCursor` is given.
+export function itemsPage(items: ItemSpec[], endCursor?: string): unknown {
+  const nodes = items.map(s => ({ status: s.status ? { name: s.status } : null, content: { number: s.number, title: titleOf(s), url: url(s.number), closed: s.closed ?? false } }))
+  return { viewer: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
 }

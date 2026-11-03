@@ -50,6 +50,19 @@ export async function graphql<T>(io: Io, operationName: string, query: string, v
   return body.data
 }
 
+type Page<N> = { nodes: N[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }
+
+// Runs a paged query until its last page, passing `after: endCursor` (null on the first call).
+export async function graphqlPages<N>(io: Io, operationName: string, query: string, variables: Record<string, unknown>, pick: (data: any) => Page<N>): Promise<N[]> {
+  const all: N[] = []
+  for (let after: string | null = null; ;) {
+    const page: Page<N> = pick(await graphql(io, operationName, query, { ...variables, after }))
+    all.push(...page.nodes)
+    if (!page.pageInfo.hasNextPage) return all
+    after = page.pageInfo.endCursor
+  }
+}
+
 export type IssueRef = { owner: string; name: string; repo: string; number: number; url: string }
 
 const ISSUE_URL = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/issues\/([1-9]\d*)\/?(?:#.*)?$/
