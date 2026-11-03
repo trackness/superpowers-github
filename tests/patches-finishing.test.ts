@@ -4,7 +4,7 @@ import { finishing } from '../hooks/patches/finishing.ts'
 import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
 import { boot, router } from './kit.ts'
 
-const ABSENT = ['Merge back to', 'Keep the branch as-is', 'Which option?', '### Option', 'Options 2 and 3', 'Present the menu', 'The menu is complete']
+const ABSENT = ['Merge back to', 'Keep the branch as-is', 'Which option?', '### Option', 'Options 2 and 3', 'Present the menu', 'The menu is complete', 'the menu comes']
 const PRESENT = [
   'mcp__superpowers-github__pr_check',
   'Closes #',

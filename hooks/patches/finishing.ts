@@ -6,6 +6,12 @@ export const finishing: PatchSet = {
   skill: 'superpowers:finishing-a-development-branch',
   patches: [
     {
+      id: 'f-tests',
+      find: 'the menu comes after a green suite',
+      replace: 'the PR comes after a green suite',
+      ifMissing: 'Step 1 still promises a menu after the tests',
+    },
+    {
       id: 'f-principle',
       find: '**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.',
       replace: '**Core principle:** Verify tests → Gate → Detect environment → Push and open the PR → Clean up.',
