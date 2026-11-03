@@ -21,10 +21,15 @@ const REPOS: Record<string, unknown> = {
 const add = (n: number, repo: string) => `gh project item-add 2 --owner trackness --url ${url(n, repo)}`
 const edit = (n: number, repo: string, s: string) => `gh project item-edit 2 --owner trackness --url ${url(n, repo)} --field Status --value ${s}`
 const issueCalls = (w: World, verb: string) => w.spawned.filter(s => s.argv[1] === 'issue' && s.argv[2] === verb)
+const nothingMoved = (w: World) => {
+  expect(w.spawned.some(s => s.argv[1] === 'image')).toBe(false)
+  expect(issueCalls(w, 'transfer')).toEqual([])
+  expect(issueCalls(w, 'create')).toEqual([])
+}
 
 // The idea is #5 in Designed on the ideas board, with two pages of comments. A transfer answers app#3 (not on app's board); a create answers site#4.
-// `fail` names the gh verb (transfer, item-edit, comment…) that exits 1; `gh issue list` answers `list`.
-const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partial<ItemSpec>; fail?: string; list?: Reply } = {}) =>
+// `fail` names the gh verb (transfer, item-edit, comment…) that exits 1; `gh issue list` answers `list`; `comments` replaces the two pages with one.
+const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partial<ItemSpec>; fail?: string; list?: Reply; comments?: string[] } = {}) =>
   router({
     graphql: {
       Repo: v => REPOS[v.name],
@@ -32,7 +37,7 @@ const world = (o: { idea?: Partial<ItemSpec>; tasks?: ItemSpec[]; moved?: Partia
         v.name === 'ideas'
           ? workData({ issue: { number: 5, status: 'Designed', title: 'My idea', body: BODY, ...o.idea }, tasks: o.tasks, repo: IDEAS })
           : workData({ issue: { number: 3, title: 'My idea', body: BODY, onBoard: false, ...o.moved }, repo: APP, board: 2 }),
-      Comments: v => (v.after === 'c1' ? commentsPage([`second ![s.png](${OLD_PNG})`]) : commentsPage(['first'], 'c1')),
+      Comments: v => (o.comments ? commentsPage(o.comments) : v.after === 'c1' ? commentsPage([`second ![s.png](${OLD_PNG})`]) : commentsPage(['first'], 'c1')),
     },
     cli: (s: Spawned) => {
       const [cmd, sub, verb] = s.argv
@@ -119,6 +124,29 @@ test('a public move whose create made the issue before failing names it and goes
   expect(argvs(w).some(a => a.startsWith('gh project item-edit'))).toBe(false)
   expect(issueCalls(w, 'comment')).toEqual([])
   expect(issueCalls(w, 'close')).toEqual([])
+})
+
+test('a public move refuses an oversized comment before uploading anything', async ($, on) => {
+  const w = await boot($, on, { reply: world({ comments: ['first', 'x'.repeat(65_537)] }) })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: SITE })
+  expect(r.deny).toContain('comment 2 of 2')
+  expect(r.deny).toContain('65,536')
+  nothingMoved(w)
+})
+
+test('a public move refuses an attachment that is not a link before uploading anything', async ($, on) => {
+  const bare = 'https://github.com/user-attachments/assets/ccc'
+  const w = await boot($, on, { reply: world({ comments: [`see ${bare}`] }) })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: SITE })
+  expect(r.deny).toContain(bare)
+  expect(r.deny).not.toContain(OLD_MD)
+  nothingMoved(w)
+})
+
+test('idea_move refuses an idea in Done before moving anything', async ($, on) => {
+  const w = await boot($, on, { reply: world({ idea: { status: 'Done' } }) })
+  for (const to of [APP, SITE]) expect((await callTool($, 'idea_move', { issue: OLD, to })).deny).toContain('is in Done')
+  nothingMoved(w)
 })
 
 test('a public move refuses an idea with sub-issues or dependency links', async ($, on) => {

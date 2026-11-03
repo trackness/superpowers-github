@@ -94,6 +94,7 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
     return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
   }
   const raw = repository.issue
+  if (!raw) throw new ToolError(`${ref.url} is not an issue.`)
   return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item) }
 }
 

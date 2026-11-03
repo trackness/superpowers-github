@@ -1,4 +1,4 @@
-import { assertWritable, created, createIssue, failedAfter, link, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
+import { assertWritable, created, createIssue, failedAfter, link, NOT_DONE, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { attachmentUrls, checkBody } from '../body.ts'
 import { IDEAS_REPO, TMP_ROOT } from '../config.ts'
 import { gh, graphqlPages, parseIssue, ToolError } from '../gh.ts'
@@ -46,6 +46,7 @@ export const ideaMoveTool: Tool = {
     assertWritable(work.repo) // the move writes to the ideas repo: the transfer, or the closing comment
     const { issue } = work
     if (issue.closed) throw new ToolError(`${link(issue)} is closed: only an open idea is moved.`)
+    if (issue.status === 'Done') throw new ToolError(`${link(issue)} is in Done: a move keeps the column, and ${NOT_DONE}. Nothing was moved.`)
     const dest = await repoInfo(io, to)
     const board = requireBoard(dest)
     const status = issue.status ?? 'Idea' // an issue in the ideas repo with no Status on its board is still an idea
@@ -70,15 +71,17 @@ export const ideaMoveTool: Tool = {
     if (linked.length) throw new ToolError(`${link(issue)} has links a public repo can't recreate (${linked.join(', ')}): remove them first, or move it to a private repo.`)
     const comments = (await graphqlPages<{ body: string }>(io, 'Comments', COMMENTS, { owner: ref.owner, name: ref.name, number: ref.number }, d => d.repository.issue.comments)).map(c => c.body)
     const texts = [issue.body, ...comments]
+    const sized = (ts: string[]) => ts.forEach((t, i) => checkBody(t, i ? `comment ${i} of ${ts.length - 1}` : 'body'))
+    sized(texts)
     const refs = [...new Map(texts.flatMap(t => parseRefs(t)).map(r => [r.url, r])).values()]
+    // Old attachment URLs are never referenced from the public repo; one left once every [name](url) link is taken out can't be uploaded again.
+    const left = attachmentUrls(texts.map(t => refs.reduce((s, r) => s.replaceAll(r.url, ''), t)).join('\n'))
+    if (left.length) throw new ToolError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they can't be uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
     const fresh = new Map<string, string>()
     for (const [i, r] of refs.entries()) fresh.set(r.url, (await upload(io, await download(io, r, `${TMP_ROOT}/${call.tool_use_id}/${i}`), dest.repo)).url)
     const swap = (t: string) => [...fresh].reduce((s, [old, now]) => s.replaceAll(old, now), t)
     const [body, copies] = [swap(issue.body), comments.map(swap)]
-    // Old attachment URLs are never referenced from the public repo; one that isn't a [name](url) link wasn't uploaded again.
-    const left = attachmentUrls(texts.join('\n')).filter(u => [body, ...copies].some(t => t.includes(u)))
-    if (left.length) throw new ToolError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they weren't uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
-    checkBody(body)
+    sized([body, ...copies]) // a fresh URL can be longer than the one it replaced
 
     const url = await createIssue(io, dest.repo, board.title, issue.title, body)
     let step = 'reading the new issue\'s URL'

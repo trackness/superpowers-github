@@ -27,7 +27,8 @@ export const attachTool: Tool = {
     let file = path
     if ((await io.fs.stat(path)).kind === 'dir') {
       const dir = `${TMP_ROOT}/${call.tool_use_id}`
-      file = `${dir}/${name ?? `${path.replace(/\/+$/, '').split('/').pop()}.zip`}`
+      const base = name?.split('/').pop() // only a file name, so the zip stays in the call's own folder
+      file = `${dir}/${base && base !== '.' && base !== '..' ? base : `${path.replace(/\/+$/, '').split('/').pop()}.zip`}`
       await runOk(io, ['mkdir', '-p', dir])
       await runOk(io, ['zip', '-r', '-q', file, '.'], { cwd: path })
     }

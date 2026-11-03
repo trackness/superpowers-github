@@ -75,6 +75,11 @@ test('status refuses a repo with no board', async ($, on) => {
   expect((await callTool($, 'status', { issue: url(10) })).deny).toContain('board_setup')
 })
 
+test('a URL that names no issue is refused as such', async ($, on) => {
+  await boot($, on, { reply: world({ repository: { issue: null } }) })
+  expect((await callTool($, 'status', { issue: url(10) })).deny).toBe(`${url(10)} is not an issue.`)
+})
+
 test('status with no status reports the work as links', async ($, on) => {
   const w = await boot($, on, { reply: world(task11({ number: 10, status: 'Todo' }, [{ number: 11, status: 'Todo' }, { number: 12, status: 'Todo' }])) })
   const r = await callTool($, 'status', { issue: url(11) })

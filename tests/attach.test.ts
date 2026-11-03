@@ -54,6 +54,14 @@ test('attach zips a directory before uploading it', async ($, on) => {
   expect(argvs(w)).toContain(`mkdir -p ${Z.replace('/visual-companion.zip', '')}`)
 })
 
+test('attach keeps the zip inside its own folder whatever the name', async ($, on) => {
+  const w = await boot($, on, { reply: world(), dirs: ['/tmp/brainstorm-1/content'] })
+  for (const name of ['../../x.zip', '..']) expect((await callTool($, 'attach', { issue: url(10), path: '/tmp/brainstorm-1/content', name })).deny).toBeUndefined()
+  const [a, b] = w.spawned.filter(s => s.argv[0] === 'zip').map(s => s.argv[3])
+  expect(a).toMatch(/^\/tmp\/superpowers-github\/[^/]+\/x\.zip$/)
+  expect(b).toMatch(/^\/tmp\/superpowers-github\/[^/]+\/content\.zip$/)
+})
+
 test("attach stops with gh-image's own output when the upload fails", async ($, on) => {
   const w = await boot($, on, { reply: world({ upload: { code: 1, stderr: 'session token expired' } }), files })
   const r = await callTool($, 'attach', { issue: url(10), path: '/tmp/x/idea.md' })
