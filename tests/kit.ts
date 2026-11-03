@@ -1,0 +1,77 @@
+import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
+import { TOOL_PREFIX } from '../hooks/config.ts'
+
+export const DEMO = 'trackness/demo'
+export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issues/${n}`
+
+export type Spawned = { argv: string[]; cwd?: string; input?: string }
+export type Reply = { stdout?: string; stderr?: string; code?: number }
+export type World = { spawned: Spawned[]; written: Record<string, string> }
+
+// The fs.write stand-in replaces the engine's own write, so it keeps the engine's limit (checked live on 2.1.317).
+const WRITE_LIMIT = 4 * 1024 * 1024
+
+// Stands in for everything beneath the plugin, then starts the session.
+export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply; files?: Record<string, string>; dirs?: string[]; cwd?: string }): Promise<World> {
+  const w: World = { spawned: [], written: {} }
+  const files = o.files ?? {}
+  const dirs = o.dirs ?? []
+  const isFile = (path: string) => Object.hasOwn(files, path)
+  on('tool.register', (_, e) => ({ value: { tool: TOOL_PREFIX + e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+  on('process.spawn', async function* (_, e) {
+    const s: Spawned = { argv: [...e.argv], cwd: e.cwd, input: e.input }
+    w.spawned.push(s)
+    const r = o.reply(s)
+    if (r.stdout) yield { stream: 'stdout' as const, text: r.stdout }
+    if (r.stderr) yield { stream: 'stderr' as const, text: r.stderr }
+    return { value: { code: r.code ?? 0, signal: null } }
+  })
+  on('fs.read', (_, e) => (isFile(e.path) ? { value: files[e.path]! } : { deny: `ENOENT: ${e.path}` }))
+  on('fs.write', (_, e) => {
+    const bytes = new TextEncoder().encode(e.text).length
+    if (bytes > WRITE_LIMIT) return { deny: `${e.path} refused: ${bytes} bytes is over the ${WRITE_LIMIT}-byte limit` }
+    w.written[e.path] = e.text
+    return { value: undefined }
+  })
+  on('fs.exists', (_, e) => ({ value: isFile(e.path) || Object.hasOwn(w.written, e.path) || dirs.includes(e.path) }))
+  // `dir`, not `directory`: what a live $.fs.stat answers for a directory on 2.1.317.
+  on('fs.stat', (_, e) =>
+    dirs.includes(e.path) ? { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
+    : isFile(e.path) ? { value: { kind: 'file' as const, size: new TextEncoder().encode(files[e.path]).length, mtimeMs: 0, isLink: false } }
+    : { deny: `ENOENT: ${e.path}` })
+  await $.session.start({ cwd: o.cwd ?? '/work/repo', surface: null, isInteractive: false })
+  return w
+}
+
+let calls = 0
+
+// Calls one of the mod's tools as the model would, with a tool_use_id of its own.
+export async function callTool($: Engine, name: string, input: Record<string, unknown>): Promise<{ text?: string; deny?: string }> {
+  const r = await $.tool.call({ ...input, tool: `${TOOL_PREFIX}${name}` as const, tool_use_id: `toolu_test_${++calls}` })
+  if (r.deny !== undefined) return { deny: r.deny }
+  if (r.isError) return { deny: r.text }
+  return { text: r.result as string }
+}
+
+export const argvs = (w: World) => w.spawned.map(s => s.argv.join(' '))
+
+// Answers `gh api graphql` by its operationName and anything else through `cli`.
+export function router(r: { graphql?: Record<string, (variables: any) => unknown>; cli?: (s: Spawned) => Reply | undefined }) {
+  const seen: Record<string, any[]> = {}
+  const reply = (s: Spawned): Reply => {
+    if (s.argv.slice(0, 3).join(' ') === 'gh api graphql') {
+      const { operationName, variables } = JSON.parse(s.input ?? '{}')
+      ;(seen[operationName] ??= []).push(variables)
+      const answer = r.graphql?.[operationName]
+      if (answer) return { stdout: JSON.stringify({ data: answer(variables) }) }
+    } else {
+      const answer = r.cli?.(s)
+      if (answer) return answer
+    }
+    return { code: 1, stderr: `unrouted: ${s.argv.join(' ')}` }
+  }
+  return Object.assign(reply, { seen })
+}
