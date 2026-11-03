@@ -11,6 +11,7 @@ const PRESENT = [
   '--squash --delete-branch',
   '## Plan changes made during the run',
   'HEAD:refs/heads/<new-branch>',
+  '--head <new-branch>',
 ]
 const patched = () => applyPatches(SKILLS['finishing-a-development-branch'], finishing)
 test('every finishing patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))

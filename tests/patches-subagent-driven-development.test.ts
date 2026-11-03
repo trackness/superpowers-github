@@ -16,6 +16,9 @@ const PRESENT = [
   'Plan change:',
   '## Plan changes made during the run',
   '# SDD ledger — plan: <parent issue URL>',
+  'Batch small same-shape work',
+  'names each batched sub-issue',
+  'moves to In Review now',
 ]
 const patched = () => applyPatches(SKILLS['subagent-driven-development'], subagentDrivenDevelopment)
 test('every subagent-driven-development patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))

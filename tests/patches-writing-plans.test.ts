@@ -11,6 +11,7 @@ const PRESENT = [
   'mcp__superpowers-github__issue_edit',
   'mcp__superpowers-github__idea_move',
   '`## Plan`',
+  'replaces the whole body',
   '65,536',
   'should we start?',
   'superpowers:subagent-driven-development',

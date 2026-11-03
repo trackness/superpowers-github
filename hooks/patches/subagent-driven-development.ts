@@ -122,7 +122,10 @@ the plan resolve — and its \`## Plan\` section holds the plan's context and
 Global Constraints. List its tasks with \`${P}status\`,
 giving only the parent: it returns the parent and each task sub-issue,
 \`Task N: <name>\`, as links with their columns. Read each task's sub-issue
-once the same way, for the scan below, and create one todo per task.`,
+once the same way, for the scan below, and create one todo per task. On a
+resume, a task whose ledger has a \`Task <N>: complete\` line but whose
+column is neither In Review nor Done moves to In Review now: call
+\`${P}status\` with its sub-issue and status \`In Review\`.`,
       ifMissing: 'the controller looks for a plan file and a spec path',
     },
     {
@@ -180,7 +183,8 @@ implementation.`,
   (5) the report-file path and report contract. Exact values (numbers,
   magic strings, signatures, test cases) appear only in the sub-issue.
   Never make a subagent read the whole plan: no dispatch points at another
-  task's sub-issue.
+  task's sub-issue, except a batch dispatch (**Batch small same-shape
+  work**), which names each batched sub-issue.
 - **Report file:** the implementer's report file is
   \`<run folder>/task-N-report.md\`, N being the task's number from its
   title \`Task N: <name>\`; put it in the dispatch prompt as \`[REPORT_FILE]\`.

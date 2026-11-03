@@ -125,7 +125,9 @@ task.
 
 ## Step 5: Push and Open the PR
 
-This is the only route. Push as the table in Step 2 says, then open the PR:
+This is the only route. Push as the table in Step 2 says, then open the PR
+(after a detached-HEAD push, add \`--head <new-branch>\`: gh's \`--head\`
+defaults to the current branch, and a detached HEAD has none):
 
 \`\`\`bash
 gh pr create --base <base-branch> --title <title> --body <description>
