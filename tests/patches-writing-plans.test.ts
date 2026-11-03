@@ -4,7 +4,7 @@ import { writingPlans } from '../hooks/patches/writing-plans.ts'
 import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
 import { boot, router } from './kit.ts'
 
-const ABSENT = ['docs/superpowers/plans/', 'executing-plans', '**Spec:**', 'Native', 'Which execution approach']
+const ABSENT = ['docs/superpowers/plans/', 'executing-plans', '**Spec:**', 'Native', 'Which execution approach', '# [Feature Name] Implementation Plan']
 const PRESENT = [
   'mcp__superpowers-github__work_list',
   'mcp__superpowers-github__issue_create',

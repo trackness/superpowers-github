@@ -19,9 +19,9 @@ export const writingPlans: PatchSet = {
     },
     {
       id: 'w-agentic',
-      find: '> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.\n',
+      find: '# [Feature Name] Implementation Plan\n\n> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.\n',
       replace: '',
-      ifMissing: 'the plan header still offers executing-plans',
+      ifMissing: 'the plan header still opens with a title line and offers executing-plans',
     },
     {
       id: 'w-spec',
