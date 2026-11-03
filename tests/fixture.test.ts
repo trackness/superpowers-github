@@ -1,0 +1,10 @@
+import { expect, test } from 'claude-code/testing'
+import { SKILLS, VERSION } from './fixtures/superpowers-7.0.0.ts'
+
+test('the fixture holds the five patched superpowers 7.0.0 skills verbatim', () => {
+  expect(VERSION).toBe('7.0.0')
+  expect(Object.keys(SKILLS).sort()).toEqual(['brainstorming', 'executing-plans', 'finishing-a-development-branch', 'subagent-driven-development', 'writing-plans'])
+  expect(SKILLS['brainstorming'].startsWith('---\nname: brainstorming\n')).toBe(true)
+  expect(SKILLS['subagent-driven-development']).toContain('`bash scripts/task-brief PLAN_FILE N`')
+  expect(SKILLS['writing-plans']).toContain('Use superpowers:executing-plans')
+})

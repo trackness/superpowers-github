@@ -1,0 +1,5 @@
+{
+  "name": "superpowers-github",
+  "owner": { "name": "trackness" },
+  "plugins": [{ "name": "superpowers-github", "source": "./" }]
+}
