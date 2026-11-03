@@ -4,7 +4,7 @@ import { argvs, boot, callTool, repoData, router, type Spawned, url, workData } 
 const ZIP = 'https://github.com/user-attachments/files/3/visual-companion.zip'
 const IDEA = 'https://github.com/user-attachments/files/8/idea.md'
 
-const world = (o: { status?: 'Idea' | 'Designed'; body: string; tasks?: number[] }) =>
+const world = (o: { status?: 'Idea' | 'Designed'; body: string; tasks?: number[]; editFails?: boolean }) =>
   router({
     graphql: {
       Repo: () => repoData({}),
@@ -13,6 +13,7 @@ const world = (o: { status?: 'Idea' | 'Designed'; body: string; tasks?: number[]
     cli: (s: Spawned) => {
       if (s.argv[1] === 'extension') return { stdout: 'gh image\tdrogers0/gh-image\tv1.4.1\n' }
       if (s.argv[1] === 'image') return { stdout: `[idea.md](${IDEA})\n` }
+      if (s.argv[1] === 'issue' && o.editFails) return { code: 1, stderr: 'HTTP 502' }
       if (s.argv[1] === 'issue' || s.argv[1] === 'project') return {}
       return undefined
     },
@@ -53,6 +54,15 @@ test('design_write refuses an Idea that has tasks', async ($, on) => {
   const r = await callTool($, 'design_write', { issue: url(10), design: 'THE DESIGN' })
   expect(r.deny).toContain('issue_edit')
   expect(w.spawned.some(s => s.argv[2] === 'edit')).toBe(false)
+})
+
+test('design_write names the uploaded idea.md when the body edit fails', async ($, on) => {
+  const w = await boot($, on, { reply: world({ body: 'my idea', editFails: true }) })
+  const r = await callTool($, 'design_write', { issue: url(10), design: 'THE DESIGN' })
+  expect(r.deny).toContain('HTTP 502')
+  expect(r.deny).toContain('unchanged')
+  expect(r.deny).toContain(`[idea.md](${IDEA})`)
+  expect(argvs(w).some(a => a.startsWith('gh project item-edit'))).toBe(false)
 })
 
 test('design_write checks the size before uploading anything', async ($, on) => {

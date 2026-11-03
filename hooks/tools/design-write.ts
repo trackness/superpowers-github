@@ -33,14 +33,20 @@ export const designWriteTool: Tool = {
     const { text: idea, refs } = splitAttachments(issue.body)
     // The idea.md line is about 200 characters.
     checkBody(`${design}\n\n## Attachments\n\n${items(refs)}${' '.repeat(200)}`)
+    let uploaded = ''
     if (idea) {
       const file = `${TMP_ROOT}/${call.tool_use_id}/idea.md`
       await io.fs.write(file, idea) // creates the folder (claude-code.d.ts line 3377)
-      refs.push((await upload(io, file, ref.repo)).markdown)
+      uploaded = (await upload(io, file, ref.repo)).markdown
+      refs.push(uploaded)
     }
     const body = refs.length ? `${design}\n\n## Attachments\n\n${items(refs)}` : design
-    checkBody(body)
-    await gh(io, ['issue', 'edit', ref.url, '--body-file', '-'], { input: body })
+    try {
+      checkBody(body)
+      await gh(io, ['issue', 'edit', ref.url, '--body-file', '-'], { input: body })
+    } catch (e) {
+      throw new ToolError(`${(e as Error).message} The issue body is unchanged.${uploaded && ` idea.md was already uploaded, and is not in it: ${uploaded}`}`)
+    }
     await setStatus(io, work.board, issue, 'Designed')
     return `Wrote the design to ${link(issue)} and moved it to Designed.${idea ? ' The idea is attached as idea.md.' : ''}`
   },
