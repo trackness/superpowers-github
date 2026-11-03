@@ -4,7 +4,7 @@ import { subagentDrivenDevelopment } from '../hooks/patches/subagent-driven-deve
 import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
 import { boot, router } from './kit.ts'
 
-const ABSENT = ['PLAN_FILE', 'scripts/', 'plan file', 'executing-plans', 'Rulings I made', 'task-brief', 'sdd-workspace']
+const ABSENT = ['PLAN_FILE', 'scripts/', 'plan file', 'executing-plans', 'Rulings I made', 'task-brief', 'sdd-workspace', 'Rule and continue', 'presents the options']
 const PRESENT = [
   'mcp__superpowers-github__run_folder',
   'mcp__superpowers-github__review_package',

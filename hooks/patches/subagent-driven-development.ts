@@ -71,6 +71,13 @@ this skill: there is no inline route to choose instead.`,
       ifMissing: 'the flow chart still says to rule around a plan conflict',
     },
     {
+      id: 's-dot-breaker',
+      find: '"Rule and continue; stop only if every path forward is a guess"',
+      replace: '"Fix the plan or rule, and continue; stop only if every path forward is a guess"',
+      count: 2,
+      ifMissing: 'the flow chart still says to rule around a load-bearing finding that reveals a plan defect',
+    },
+    {
       id: 's-workspace',
       find: `- Each plan owns a workspace: at skill start, run this skill's
   \`bash scripts/sdd-workspace PLAN_FILE\` — it prints the plan's git-ignored
@@ -308,10 +315,25 @@ neither fixed nor parked-with-ruling at the cap.`,
       ifMissing: 'the final review gets no package',
     },
     {
+      id: 's-final-plan',
+      find: '[code-reviewer.md](../requesting-code-review/code-reviewer.md).',
+      replace: `[code-reviewer.md](../requesting-code-review/code-reviewer.md). Fill its
+\`[PLAN_OR_REQUIREMENTS]\` with the parent issue URL — its design, its
+\`## Plan\` section and its task sub-issues, read with \`gh issue view <url>\`
+— never a file path.`,
+      ifMissing: "the final reviewer is pointed at a plan file that doesn't exist",
+    },
+    {
       id: 's-final-fix',
       find: '(`bash scripts/review-package PLAN_FILE FIX_BASE HEAD` over the fix range,',
       replace: `(\`${P}review_package\` with the parent over the fix range FIX_BASE..HEAD,`,
       ifMissing: "the final fix wave's re-review gets no package",
+    },
+    {
+      id: 's-residual',
+      find: 'finishing-a-development-branch presents the options.',
+      replace: "finishing-a-development-branch hands the PR over, with their rulings in the\nPR's `## Plan changes made during the run` section.",
+      ifMissing: 'the final-review text still promises a menu of options that finishing no longer offers',
     },
     {
       id: 's-finish',
