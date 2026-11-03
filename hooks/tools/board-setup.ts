@@ -6,6 +6,15 @@ import { bool, optStr, str, type Tool } from '../tools.ts'
 
 const MERGE_SETTINGS = ['--enable-squash-merge', '--enable-merge-commit=false', '--enable-rebase-merge=false', '--delete-branch-on-merge', '--squash-merge-commit-message', 'pr-title']
 
+// Everything after the link. Each step is safe to run again, so repair can finish a half-built board.
+async function build(io: Io, owner: string, number: number, repo: string): Promise<void> {
+  const field = await statusField(io, owner, number)
+  await setOptions(io, field)
+  await deleteOffWorkflows(io, await workflows(io, owner, number))
+  await ensureBoardView(io, owner, number, field.projectId)
+  await gh(io, ['repo', 'edit', repo, ...MERGE_SETTINGS])
+}
+
 // Reads the board back: exactly the six Status options, in order, and every workflow as WORKFLOWS says.
 async function check(io: Io, board: Board, repo: string): Promise<string> {
   const { owner, number, title, url } = board
@@ -30,13 +39,13 @@ async function check(io: Io, board: Board, repo: string): Promise<string> {
 export const boardSetupTool: Tool = {
   spec: {
     name: 'board_setup',
-    description: `Sets up a repo's board, or checks the one it has. A repo's board is the board linked to it whose title is exactly the repo's name. With none, it builds one through the API: the Status options ${STATUSES.join(', ')}; the workflows "Item closed" and "Auto-close issue" kept on and the other four deleted; a board view; the board linked to the repo; and the repo's merge settings (squash merges only, with the PR's title as the commit message, and the branch deleted on merge). Then it reads the board back. With a board, it checks the Status options and the workflows, and refuses with what differs and how to fix it. Ask James once before building a board. \`create\` makes the repo first; ${IDEAS_REPO} must stay private.`,
+    description: `Sets up a repo's board, or checks the one it has. A repo's board is the board linked to it whose title is exactly the repo's name. With none, it builds one through the API: linked to the repo first, then the Status options ${STATUSES.join(', ')}; the workflows "Item closed" and "Auto-close issue" kept on and the other four deleted; a board view; and the repo's merge settings (squash merges only, with the PR's title as the commit message, and the branch deleted on merge). Then it reads the board back. With a board, it checks the Status options and the workflows, and refuses with what differs and how to fix it. Ask James once before building a board. \`create\` makes the repo first; ${IDEAS_REPO} must stay private.`,
     inputSchema: {
       type: 'object',
       properties: {
         repo: { type: 'string', description: '<owner>/<name>.' },
         create: { type: 'string', enum: ['private', 'public'], description: `Create the repo first, with this visibility. ${IDEAS_REPO} is never created public.` },
-        repair: { type: 'boolean', description: 'For a board that exists: set its Status options to the six (keeping the IDs of those it has) and delete the workflows that must be off, then check it again.' },
+        repair: { type: 'boolean', description: 'For a board that exists: set its Status options to the six (keeping the IDs of those it has), delete the workflows that must be off, add a board view if it has none and set the repo\'s merge settings, then check it again. Finishes a board whose setup failed partway.' },
       },
       required: ['repo'],
     },
@@ -50,24 +59,23 @@ export const boardSetupTool: Tool = {
     const info = await repoInfo(io, repo)
     assertWritable(info)
     if (info.board) {
-      const { owner, number } = info.board
-      if (repair) {
-        await setOptions(io, await statusField(io, owner, number))
-        await deleteOffWorkflows(io, await workflows(io, owner, number))
-      }
+      if (repair) await build(io, info.board.owner, info.board.number, info.repo)
       return check(io, info.board, info.repo)
     }
     const [owner, name] = splitRepo(info.repo)
     // Without --format json, gh prints nothing when its output isn't a terminal.
-    const p: { number: number; id: string; url: string } = JSON.parse(await gh(io, ['project', 'create', '--owner', owner, '--title', name, '--format', 'json']))
+    const p: { number: number; url: string } = JSON.parse(await gh(io, ['project', 'create', '--owner', owner, '--title', name, '--format', 'json']))
+    const link = ['project', 'link', String(p.number), '--owner', owner, '--repo', info.repo]
+    // Linked first: a later call finds the board through the repo, so repair can finish whatever failed after this.
+    let linked = false
     try {
-      await setOptions(io, await statusField(io, owner, p.number))
-      await deleteOffWorkflows(io, await workflows(io, owner, p.number))
-      await ensureBoardView(io, owner, p.number, p.id)
-      await gh(io, ['project', 'link', String(p.number), '--owner', owner, '--repo', info.repo])
-      await gh(io, ['repo', 'edit', info.repo, ...MERGE_SETTINGS])
+      await gh(io, link)
+      linked = true
+      await build(io, owner, p.number, info.repo)
     } catch (err) {
-      throw new ToolError(`Created board "${name}" (${p.url}), then: ${err instanceof Error ? err.message : err}\nNot retried. Until that board is linked to ${info.repo}, calling board_setup again creates a second board.`)
+      const again = 'call board_setup again without create, with repair: true'
+      const fix = linked ? `To finish it, ${again}.` : `It is not linked to ${info.repo}, so calling board_setup now would create a second board: first run \`gh ${link.join(' ')}\`, then ${again}.`
+      throw new ToolError(`Created board "${name}" (${p.url}), then this failed: ${err instanceof Error ? err.message : err}\n${fix}`)
     }
     return check(io, { owner, number: p.number, title: name, url: p.url }, info.repo)
   },

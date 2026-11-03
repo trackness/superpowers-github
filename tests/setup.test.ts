@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { STATUSES } from '../hooks/config.ts'
 import { OPTION_STYLE, workflowDiffs } from '../hooks/setup.ts'
-import { argvs, boot, callTool, DEMO, fieldsData, projectJson, repoData, router, type Spawned, viewsData, workflowsData } from './kit.ts'
+import { argvs, boot, callTool, DEMO, fieldsData, projectJson, type Reply, repoData, router, type Spawned, viewsData, workflowsData } from './kit.ts'
 
 // A fresh board from `gh project create` has all six workflows on.
 const FRESH = { 'Item closed': true, 'Auto-close issue': true, 'Item added to project': true, 'Pull request linked to issue': true, 'Pull request merged': true, 'Auto-add sub-issues to project': true }
@@ -15,11 +15,14 @@ const built = (workflows: Record<string, boolean> = KEPT): BoardState => ({ opti
 const head = (s: Spawned, n: number) => s.argv.slice(0, n).join(' ')
 
 // Answers `Repo`, and the board's ops from `b`, which each mutation changes, so a later read sees what it left.
-// `gh project create` answers board 7; any other `gh project` or `gh repo` call succeeds, except one `fail` names.
-function world(b: BoardState, o: { repo?: string; boards?: string[]; afterDelete?: (b: BoardState) => void; fail?: string } = {}) {
-  return router({
+// `gh project create` answers board `number` (default 7), and once `gh project link` succeeds `Repo` lists the
+// repo's own board (board 1, so pass `number: 1` for a test that calls again). Any other `gh project` or `gh repo`
+// call succeeds. `failOnce` names a command (its first three words) or a GraphQL op that fails the first time.
+function world(b: BoardState, o: { repo?: string; boards?: string[]; number?: number; afterDelete?: (b: BoardState) => void; failOnce?: string } = {}) {
+  let [linked, failed] = [false, false]
+  const r = router({
     graphql: {
-      Repo: () => repoData({ repo: o.repo, boards: o.boards }),
+      Repo: () => repoData({ repo: o.repo, boards: linked ? undefined : o.boards }),
       Fields: () => fieldsData(b.options),
       SetOptions: v => {
         b.options = v.options.map((x: { name: string }) => x.name)
@@ -38,11 +41,20 @@ function world(b: BoardState, o: { repo?: string; boards?: string[]; afterDelete
       },
     },
     cli: s => {
-      if (o.fail && head(s, 3) === o.fail) return { code: 1, stderr: `${o.fail} refused` }
-      if (head(s, 3) === 'gh project create') return projectJson(7)
+      if (head(s, 3) === 'gh project create') return projectJson(o.number ?? 7)
       return head(s, 2) === 'gh project' || head(s, 2) === 'gh repo' ? {} : undefined
     },
   })
+  const reply = (s: Spawned): Reply => {
+    const name = head(s, 3) === 'gh api graphql' ? JSON.parse(s.input ?? '{}').operationName : head(s, 3)
+    if (!failed && name === o.failOnce) {
+      failed = true
+      return { code: 1, stderr: `${name} refused` }
+    }
+    if (name === 'gh project link') linked = true
+    return r(s)
+  }
+  return Object.assign(reply, { seen: r.seen })
 }
 
 test('board_setup builds a fresh board: option IDs kept, four workflows deleted, a board view, linked', async ($, on) => {
@@ -59,6 +71,9 @@ test('board_setup builds a fresh board: option IDs kept, four workflows deleted,
   expect(r.seen.DeleteWorkflow?.map((v: any) => v.workflowId).sort()).toEqual(['wf-Auto-add sub-issues to project', 'wf-Item added to project', 'wf-Pull request linked to issue', 'wf-Pull request merged'])
   expect(r.seen.CreateView?.[0]).toMatchObject({ layout: 'BOARD_LAYOUT' })
   expect(argvs(w)).toContain('gh project link 7 --owner trackness --repo trackness/demo')
+  // Linked straight after the create, before anything else touches the board.
+  const create = argvs(w).indexOf('gh project create --owner trackness --title demo --format json')
+  expect(argvs(w).indexOf('gh project link 7 --owner trackness --repo trackness/demo')).toBe(create + 1)
   expect(argvs(w)).toContain(merge(DEMO))
   expect(res.text).toContain('is set up for trackness/demo')
   expect(res.text).toBe('board "demo" (https://github.com/users/trackness/projects/7) is set up for trackness/demo')
@@ -89,14 +104,20 @@ test('board_setup only checks a repo that already has its board', async ($, on) 
 
 test('board_setup reports a board that differs, and repairs it on request', async ($, on) => {
   const r = world(built({ ...KEPT, 'Pull request merged': true }))
-  await boot($, on, { reply: r })
+  const w = await boot($, on, { reply: r })
   const first = await callTool($, 'board_setup', { repo: DEMO })
   expect(first.deny).toContain('Pull request merged: on, must be off')
   expect(first.deny).toContain('repair: true')
   expect(first.deny).not.toContain('Save and turn on workflow')
   expect(r.seen.DeleteWorkflow).toBeUndefined()
+  expect(r.seen.Views).toBeUndefined()
+  expect(argvs(w)).not.toContain(merge(DEMO))
   const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
   expect(r.seen.DeleteWorkflow).toContainEqual({ workflowId: 'wf-Pull request merged' })
+  // Repair also checks for a board view (this board has one) and sets the merge settings.
+  expect(r.seen.Views).toHaveLength(1)
+  expect(r.seen.CreateView).toBeUndefined()
+  expect(argvs(w)).toContain(merge(DEMO))
   expect(again.text).toContain('is set up')
 })
 
@@ -139,14 +160,36 @@ test('board_setup refuses a repo without its owner before creating anything', as
   expect(w.spawned).toEqual([])
 })
 
-test('board_setup names the created board when a later step fails', async ($, on) => {
-  const r = world(fresh(), { boards: [], fail: 'gh project link' })
+test('board_setup warns of a second board only when linking the new board fails', async ($, on) => {
+  const r = world(fresh(), { boards: [], failOnce: 'gh project link' })
   const w = await boot($, on, { reply: r })
   const res = await callTool($, 'board_setup', { repo: DEMO })
-  expect(res.deny).toContain('https://github.com/users/trackness/projects/7')
-  expect(res.deny).toContain('gh project link 7 --owner trackness --repo trackness/demo')
+  expect(res.deny).toContain('Created board "demo" (https://github.com/users/trackness/projects/7)')
+  expect(res.deny).toContain('gh project link refused')
   expect(res.deny).toContain('second board')
+  expect(res.deny).toContain('first run `gh project link 7 --owner trackness --repo trackness/demo`')
+  expect(res.deny).toContain('call board_setup again without create, with repair: true')
+  expect(r.seen.Fields).toBeUndefined()
   expect(argvs(w)).not.toContain(merge(DEMO))
+})
+
+test('board_setup finishes a half-built board when called again with repair', async ($, on) => {
+  const r = world(fresh(), { boards: [], number: 1, failOnce: 'SetOptions' })
+  const w = await boot($, on, { reply: r })
+  const first = await callTool($, 'board_setup', { repo: DEMO, create: 'private' })
+  expect(first.deny).toContain('Created board "demo" (https://github.com/users/trackness/projects/1)')
+  expect(first.deny).toContain('GraphQL SetOptions failed')
+  expect(first.deny).toContain('To finish it, call board_setup again without create, with repair: true.')
+  expect(first.deny).not.toContain('second board')
+  expect(r.seen.CreateView).toBeUndefined()
+  expect(argvs(w)).not.toContain(merge(DEMO))
+  const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
+  expect(again.text).toBe('board "demo" (https://github.com/users/trackness/projects/1) is set up for trackness/demo')
+  expect(argvs(w).filter(a => a.startsWith('gh project create'))).toHaveLength(1)
+  expect(argvs(w).filter(a => a.startsWith('gh repo create'))).toHaveLength(1)
+  expect(r.seen.SetOptions).toHaveLength(1)
+  expect(r.seen.CreateView?.[0]).toMatchObject({ layout: 'BOARD_LAYOUT' })
+  expect(argvs(w)).toContain(merge(DEMO))
 })
 
 test('workflowDiffs: must-be-on missing or off, must-be-off on; a must-be-off one deleted or disabled is fine', () => {
