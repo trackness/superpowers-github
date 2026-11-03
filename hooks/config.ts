@@ -1,5 +1,6 @@
 export const PLUGIN = 'superpowers-github'
 export const TOOL_PREFIX = 'mcp__superpowers-github__'
+export const REPO_DIR = '/Users/james/workspace/claude-code/plugins/superpowers-github'
 export const IDEAS_REPO = 'trackness/ideas'
 export const BODY_LIMIT = 65_536
 export const GH_IMAGE = { repo: 'drogers0/gh-image', version: 'v1.4.1' }
