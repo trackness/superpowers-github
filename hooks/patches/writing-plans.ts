@@ -1,6 +1,5 @@
+import { TOOL_PREFIX as P } from '../config.ts'
 import type { PatchSet } from './engine.ts'
-
-const P = 'mcp__superpowers-github__'
 
 export const writingPlans: PatchSet = {
   skill: 'superpowers:writing-plans',
