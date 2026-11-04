@@ -14,6 +14,7 @@ A Claude Code mod that patches five superpowers 7.0.0 skills (brainstorming, wri
 
 - `claude plugin marketplace add /Users/james/workspace/claude-code/plugins/superpowers-github`: the repository must live at this path, because the upgrade guard's fix steps name it (`REPO_DIR` in `hooks/config.ts`).
 - `claude plugin install superpowers-github@superpowers-github`
+- No permission allow rule is needed: when no settings rule decides a call of one of the mod's eleven tools, the mod allows it itself. A deny or ask rule you write for `mcp__superpowers-github__<name>` still stands, as do an organization's ceiling and plan mode.
 - Run `/reload-plugins` after editing the mod.
 
 ## When the upgrade guard blocks a skill

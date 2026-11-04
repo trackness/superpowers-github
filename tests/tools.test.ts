@@ -44,7 +44,8 @@ const answer = (on: On, label: string) => {
   })
   return questions
 }
-const ask = (): Verdict => ({ decision: 'ask', reason: 'Claude requested permissions to use it.' })
+// An ask a settings rule decided: the one ask the mod's vouch leaves standing.
+const ask = (): Verdict => ({ decision: 'ask', reason: 'Asked by a rule.', rule: RUN_FOLDER })
 
 test('an ask that James allows runs the tool', async ($, on) => {
   const questions = answer(on, 'Yes')
@@ -68,4 +69,33 @@ test('an ask that cannot be put to James runs nothing', async ($, on) => {
   const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ask() : { decision: 'allow' }) })
   expect((await callTool($, 'run_folder', { parent: url(12) })).deny).toContain('no one to ask')
   expect(w.spawned).toEqual([])
+})
+
+// What the engine answers a tool with no settings rule: core's own ask, no `rule` behind it.
+const ruleless = (): Verdict => ({ decision: 'ask', reason: 'Claude requested permissions to use it.' })
+
+test('with no rule the mod vouches for each of its own tools, and a call runs without asking', async ($, on) => {
+  const questions = answer(on, 'No')
+  const w = await boot($, on, { reply: git, check: ruleless })
+  expect(w.registered).toHaveLength(11)
+  for (const name of w.registered) {
+    expect(await $.tool.check({ tool: `${TOOL_PREFIX}${name}`, input: {} })).toEqual({ decision: 'allow', reason: 'superpowers-github vouches for its own tool' })
+  }
+  expect((await callTool($, 'run_folder', { parent: url(12) })).text).toBe('/work/repo/.superpowers/sdd/12')
+  expect(questions).toEqual([])
+})
+
+test('an ask or deny a rule decided, and an ask under an org ceiling, stand as the engine gave them', async ($, on) => {
+  const ruled: Record<string, Verdict> = {
+    [RUN_FOLDER]: { decision: 'ask', reason: 'Asked by a rule.', rule: RUN_FOLDER },
+    [`${TOOL_PREFIX}status`]: { decision: 'deny', reason: 'Denied by a rule.', rule: `${TOOL_PREFIX}status` },
+  }
+  await boot($, on, { reply: git, check: e => ruled[e.tool] ?? ruleless() })
+  for (const [tool, verdict] of Object.entries(ruled)) expect(await $.tool.check({ tool, input: {} })).toEqual(verdict)
+  expect(await $.tool.check({ tool: `${TOOL_PREFIX}work_list`, input: {}, ceiling: 'ask' })).toMatchObject({ decision: 'ask' })
+})
+
+test('the vouch matches only the mod\'s own tool names', async ($, on) => {
+  await boot($, on, { reply: git, check: ruleless })
+  for (const tool of ['Bash', 'mcp__other__run_folder', `${TOOL_PREFIX}not_a_tool`]) expect(await $.tool.check({ tool, input: {} })).toEqual(ruleless())
 })

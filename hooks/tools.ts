@@ -36,6 +36,13 @@ export function registerTools(on: On, tools: Tool[]): void {
     for (const t of tools) await $.tool.register(t.spec)
     return next(e)
   })
+  // With no settings rule the engine asks for every call of a mod's tool, so the mod vouches for its own.
+  // Only that ruleless ask is answered: a rule's deny or ask, an org ceiling and plan mode stand.
+  on('tool.check', { tool: tools.map(t => `${TOOL_PREFIX}${t.spec.name}`) }, async (_, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision !== 'ask' || verdict.rule !== undefined || verdict.ceiling !== undefined) return verdict
+    return { decision: 'allow', reason: `${PLUGIN} vouches for its own tool` }
+  })
   for (const t of tools) {
     const { name } = t.spec
     on('tool.call', { tool: `${TOOL_PREFIX}${name}` as const }, async ($, e) => {

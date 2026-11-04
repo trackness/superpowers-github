@@ -8,7 +8,7 @@ export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issue
 export type Spawned = { argv: string[]; cwd?: string; input?: string }
 export type Reply = { stdout?: string; stderr?: string; code?: number }
 export type World = { spawned: Spawned[]; written: Record<string, string>; registered: string[] }
-export type Verdict = { decision: 'allow' | 'ask' | 'deny'; reason?: string }
+export type Verdict = { decision: 'allow' | 'ask' | 'deny'; reason?: string; rule?: string }
 
 // The fs.write stand-in replaces the engine's own write, so it keeps the engine's limit (checked live on 2.1.317).
 const WRITE_LIMIT = 4 * 1024 * 1024
