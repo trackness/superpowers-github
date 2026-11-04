@@ -85,7 +85,7 @@ export function router(r: { graphql?: Record<string, (variables: any) => unknown
   return Object.assign(reply, { seen })
 }
 
-export type ItemSpec = { number: number; status?: Status; closed?: boolean; title?: string; body?: string; onBoard?: boolean; archived?: boolean; blockedBy?: number[]; blocking?: number[] }
+export type ItemSpec = { number: number; status?: Status; closed?: boolean; closedAt?: string; title?: string; body?: string; onBoard?: boolean; archived?: boolean; blockedBy?: number[]; blocking?: number[] }
 
 const boardUrl = (n: number) => `https://github.com/users/trackness/projects/${n}`
 const titleOf = (s: ItemSpec) => s.title ?? `Task ${s.number}: T${s.number}`
@@ -106,6 +106,7 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
     url: url(s.number, repo),
     title: titleOf(s),
     closed: s.closed ?? false,
+    closedAt: s.closedAt ?? null,
     body: s.body ?? '',
     blockedBy: numbers(s.blockedBy),
     blocking: numbers(s.blocking),
