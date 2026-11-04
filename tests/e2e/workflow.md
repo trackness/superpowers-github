@@ -16,7 +16,8 @@ You are the driver of an unattended end-to-end test of the superpowers-github mo
 
 ## Placeholders
 
-- `<RUN>`: `superpowers-github-e2e-<YYYYMMDD-HHMMSS>`, from step 1. `<ROOT>`: `/private/tmp/<RUN>`. `<CLONE>`: `/private/tmp/<RUN>/clone`.
+- `<RUN>`: `superpowers-github-e2e-<YYYYMMDD-HHMMSS>`, from step 1. `<ROOT>`: `/private/tmp/superpowers-github-e2e-workflow`, the same for every run, so the allow rules can name it exactly. `<CLONE>`: `<ROOT>/clone`.
+- `<DRIVER_SID>`: this session's id, from step 1.
 - `<SID>`: the inner session's id, from step 1, in lower case.
 - `<SNAP>`: this command:
 
@@ -38,13 +39,15 @@ It prints one JSON object. Its `result` is the inner session's last message, `is
 
 ### 1. Preflight
 
-1. Bash: `gh image check-token`. PASS when a line of its output is exactly `trackness`. Otherwise record FAIL with its output and this fix: "Sign in to GitHub as trackness in the browser, then run `gh image extract-token` yourself." Then go to step 8.
-2. Bash: `date +%Y%m%d-%H%M%S`. Set `<RUN>` to `superpowers-github-e2e-` followed by its output.
-3. Bash: `uuidgen`. Set `<SID>` to its output in lower case.
-4. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder; step 8 removes only what this run adds to it.
-5. Bash: `gh project list --owner trackness --format json`. Record each board's `number` and `title` as `<BOARDS0>`.
-6. Bash: `gh issue list -R trackness/ideas --state all --json number,title,state,updatedAt`. Record its output as `<IDEAS0>`.
-7. Bash: `claude plugin list --json`. Record every entry whose `scope` is `user` (its `id`, `version`, `enabled`, `installedAt` and `lastUpdated`) as `<PLUGINS0>`.
+1. Bash: `printenv CLAUDE_CODE_SESSION_ID`. Set `<DRIVER_SID>` to its output.
+2. Bash: `gh image check-token`. PASS when a line of its output is exactly `trackness`. Otherwise record FAIL with its output and this fix: "Sign in to GitHub as trackness in the browser, then run `gh image extract-token` yourself." Then go to step 8.
+3. Bash: `ls -d <ROOT>`. PASS when it says "No such file or directory". Otherwise record FAIL with this fix: "An earlier run left `<ROOT>` behind: delete it yourself with `rm -rf <ROOT>`." Then go to step 8.
+4. Bash: `date +%Y%m%d-%H%M%S`. Set `<RUN>` to `superpowers-github-e2e-` followed by its output.
+5. Bash: `uuidgen`. Set `<SID>` to its output in lower case.
+6. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder; step 8 removes only what this run adds to it.
+7. Bash: `gh project list --owner trackness --format json`. Record each board's `number` and `title` as `<BOARDS0>`.
+8. Bash: `gh issue list -R trackness/ideas --state all --json number,title,state,updatedAt`. Record its output as `<IDEAS0>`.
+9. Bash: `claude plugin list --json`. Record every entry whose `scope` is `user` (its `id`, `version`, `enabled`, `installedAt` and `lastUpdated`) as `<PLUGINS0>`.
 
 ### 2. Repo, board, clone, superpowers
 
@@ -138,31 +141,31 @@ Do each part that applies, even after a failure. Skip only what this run never c
 
 1. If step 2.5 installed superpowers: Bash `claude plugin uninstall superpowers@claude-plugins-official --scope project --keep-data` (from `<CLONE>`, the working directory). `--keep-data` keeps the plugin's data folder, which the user-scope install shares.
 2. If the opening turn ran: Bash `claude purge -y <CLONE>`. It deletes the inner session's transcripts (its subagents' included) under `~/.claude/projects/`.
-3. If step 2.13 or the opening turn ran: Bash `rm -rf /private/tmp/claude-501/-private-tmp-<RUN>-clone`. This is where those sessions' background tasks wrote their output; purge leaves it.
+3. If step 2.13 or the opening turn ran: Bash `rm -rf /private/tmp/claude-501/-private-tmp-superpowers-github-e2e-workflow-clone`. This is where those sessions' background tasks wrote their output; purge leaves it.
 4. If `<RUN>` is set: Bash `gh repo delete trackness/<RUN> --yes` (an error that the repo does not exist is fine when step 2 never created it).
 5. If `<RUN>` is set: Bash `gh project list --owner trackness --format json`. For each board whose `title` is exactly `<RUN>`: Bash `gh project view <its number> --owner trackness --format json`, and only if its `title` is exactly `<RUN>`, Bash `gh project delete <its number> --owner trackness`. Deleting a repo does not delete its board.
-6. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it), then Bash `rm -rf /private/tmp/<RUN>`
-7. Bash: `ls -a /tmp/superpowers-github`. For each entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `rm -rf /tmp/superpowers-github/<entry>`. If `<TMPBASE>` was none and the folder is now empty: Bash `rmdir /tmp/superpowers-github`.
+6. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it), then Bash `rm -rf <ROOT>`
+7. If `<TMPBASE>` was recorded: Bash `ls -a /tmp/superpowers-github`. For each entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `rm -rf /tmp/superpowers-github/<entry>`. If `<TMPBASE>` was none and the folder is now empty: Bash `rmdir /tmp/superpowers-github`.
 
 Then check for leftovers, each with one Bash call:
 
 - `gh repo list trackness --limit 300 --json name`: no name starts `superpowers-github-e2e-`.
 - `gh project list --owner trackness --format json`: the boards' numbers and titles are exactly `<BOARDS0>`.
 - `gh issue list -R trackness/ideas --state all --json number,title,state,updatedAt`: exactly `<IDEAS0>`.
-- `ls -d /private/tmp/<RUN>`: "No such file or directory".
-- `ls -a /tmp/superpowers-github`: only the `<TMPBASE>` entries, or "No such file or directory" if `<TMPBASE>` was none.
+- If `<RUN>` is set: `ls -d <ROOT>`: "No such file or directory".
+- If `<TMPBASE>` was recorded: `ls -a /tmp/superpowers-github`: only the `<TMPBASE>` entries, or "No such file or directory" if `<TMPBASE>` was none.
 - `claude plugin list --json`: no entry has a `projectPath` starting `/private/tmp/superpowers-github-e2e-`, and its `user`-scope entries are exactly `<PLUGINS0>`.
-- `ls -d /Users/james/.claude/projects/-private-tmp-<RUN>-clone`: "No such file or directory".
-- `ls -d /private/tmp/claude-501/-private-tmp-<RUN>-clone`: "No such file or directory".
-- For `<SID>` and `<PROBE_SID>` (each that is set): `ls -A /Users/james/.claude/session-env/<that id>`: prints nothing. Claude Code makes this empty folder for every session, this one's included, and refuses to let a session delete it; it is not a leftover. Name the folders in the report's Notes.
+- `ls -d /Users/james/.claude/projects/-private-tmp-superpowers-github-e2e-workflow-clone`: "No such file or directory".
+- `ls -d /private/tmp/claude-501/-private-tmp-superpowers-github-e2e-workflow-clone`: "No such file or directory".
+- For `<SID>` if the opening turn ran, and `<PROBE_SID>` if it is set: `ls -A /Users/james/.claude/session-env/<that id>`: prints nothing. Claude Code makes this empty folder for every session, this one's included, and refuses to let a session delete it; it is not a leftover, and the report's last line removes it.
 
 ## Final report
 
-End with this report and nothing after it:
+End with this report and nothing after it. Its last line is the command that removes the empty `~/.claude/session-env/<id>` folders of the sessions this run started: `<DRIVER_SID>` always, `<SID>` if the opening turn ran, `<PROBE_SID>` if it is set.
 
 ```
 E2E WORKFLOW RESULT: PASS | FAIL
-RUN: <RUN> (board <N>, session <SID>, probe <PROBE_SID>)
+RUN: <RUN> (board <N>, driver <DRIVER_SID>, session <SID>, probe <PROBE_SID>)
 1 preflight: PASS|FAIL|SKIPPED — <evidence>
 2 repo, board, clone, superpowers (project scope): ...
 3 conversation: <the turns, each as: n. sent "<reply>" → asked "<the question it ended on>">
@@ -174,6 +177,7 @@ RUN: <RUN> (board <N>, session <SID>, probe <PROBE_SID>)
 Leftovers: none | <each one>
 Cost: inner session $<the last turn's total_cost_usd>, probe $<its total_cost_usd>
 Notes: <permission denials, the run folder, anything unexpected, or none>
+Cleanup: bash ~/workspace/claude-code/plugins/superpowers-github/tests/e2e/cleanup-session-env.sh <DRIVER_SID> <SID> <PROBE_SID>
 ```
 
 `E2E WORKFLOW RESULT` is PASS only when every step from 1 to 8 passed and there are no leftovers.

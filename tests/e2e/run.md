@@ -17,7 +17,8 @@ You are running a fully ephemeral end-to-end test of the superpowers-github mod 
 ## Placeholders
 
 - `<RUN>`: `superpowers-github-e2e-<YYYYMMDD-HHMMSS>`, from step 1.
-- `<ROOT>`: `/private/tmp/<RUN>`. `<CLONE>`: `/private/tmp/<RUN>/clone`.
+- `<ROOT>`: `/private/tmp/superpowers-github-e2e-run`, the same for every run, so the allow rules can name it exactly. `<CLONE>`: `<ROOT>/clone`.
+- `<DRIVER_SID>`: this session's id, from step 1.
 - `<SNAP name>`: this command, with `<name>` replaced by a repo name in `trackness`:
 
 ```
@@ -30,9 +31,11 @@ An issue's column on a board is the `status.name` of its `projectItems` entry wh
 
 ### 1. Preflight
 
-1. Bash: `gh image check-token`. PASS when a line of its output is exactly `trackness`. Otherwise record FAIL with its output and this fix: "Sign in to GitHub as trackness in the browser, then run `gh image extract-token` yourself." Then go to step 11.
-2. Bash: `date +%Y%m%d-%H%M%S`. Set `<RUN>` to `superpowers-github-e2e-` followed by its output.
-3. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder; step 11 removes only what this run adds to it.
+1. Bash: `printenv CLAUDE_CODE_SESSION_ID`. Set `<DRIVER_SID>` to its output.
+2. Bash: `gh image check-token`. PASS when a line of its output is exactly `trackness`. Otherwise record FAIL with its output and this fix: "Sign in to GitHub as trackness in the browser, then run `gh image extract-token` yourself." Then go to step 11.
+3. Bash: `ls -d <ROOT>`. PASS when it says "No such file or directory". Otherwise record FAIL with this fix: "An earlier run left `<ROOT>` behind: delete it yourself with `rm -rf <ROOT>`." Then go to step 11.
+4. Bash: `date +%Y%m%d-%H%M%S`. Set `<RUN>` to `superpowers-github-e2e-` followed by its output.
+5. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder; step 11 removes only what this run adds to it.
 
 ### 2. board_setup
 
@@ -121,11 +124,11 @@ An issue's column on a board is the `status.name` of its `projectItems` entry wh
 Do each part that applies, even after a failure. Skip only what this run never created.
 
 1. If `<IDEAS_N>` is set: Bash `gh project item-list <IDEAS_N> --owner trackness --format json`. Only if it lists an item titled exactly `E2E idea <RUN>`: Bash `gh project item-delete <IDEAS_N> --owner trackness --id <that item's id>`, and say in the report's Notes that the card was left on the ideas board.
-2. If step 9.1 created `<IURL>` and step 9.4 did not transfer it: Bash `gh issue delete <IURL> --yes` (this deletes only the test's own idea).
+2. If step 9.1 created `<IURL>` and step 9.4 did not transfer it, the idea is still in `trackness/ideas`. Leave it: no allow rule can name its number in advance, so this run can't delete it. List it under Leftovers as `<IURL>`, with the command that deletes it: `gh issue delete <IURL> --yes`.
 3. If `<RUN>` is set: Bash `gh repo delete trackness/<RUN> --yes` (an error that the repo does not exist is fine when step 2 never created it).
 4. If `<RUN>` is set: Bash `gh project list --owner trackness --format json`. For each board whose `title` is exactly `<RUN>`: Bash `gh project view <its number> --owner trackness --format json`, and only if its `title` is exactly `<RUN>`, Bash `gh project delete <its number> --owner trackness`.
-5. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it, and the clone is the working directory since step 3), then Bash `rm -rf /private/tmp/<RUN>`
-6. Bash: `ls -a /tmp/superpowers-github`. For each entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `rm -rf /tmp/superpowers-github/<entry>`. If `<TMPBASE>` was none and the folder is now empty: Bash `rmdir /tmp/superpowers-github`.
+5. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it, and the clone is the working directory since step 3), then Bash `rm -rf <ROOT>`
+6. If `<TMPBASE>` was recorded: Bash `ls -a /tmp/superpowers-github`. For each entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `rm -rf /tmp/superpowers-github/<entry>`. If `<TMPBASE>` was none and the folder is now empty: Bash `rmdir /tmp/superpowers-github`.
 
 Then check for leftovers, each with one Bash call:
 
@@ -133,16 +136,16 @@ Then check for leftovers, each with one Bash call:
 - `gh project list --owner trackness --format json`: no title starts `superpowers-github-e2e-`.
 - `gh issue list -R trackness/ideas --state all --json number,title`: no title `E2E idea <RUN>`.
 - If `<IDEAS_N>` is set: `gh project item-list <IDEAS_N> --owner trackness --format json`: no item titled `E2E idea <RUN>`.
-- `ls -d /private/tmp/<RUN>`: "No such file or directory".
-- `ls -a /tmp/superpowers-github`: only the `<TMPBASE>` entries, or "No such file or directory" if `<TMPBASE>` was none.
+- If `<RUN>` is set: `ls -d <ROOT>`: "No such file or directory".
+- If `<TMPBASE>` was recorded: `ls -a /tmp/superpowers-github`: only the `<TMPBASE>` entries, or "No such file or directory" if `<TMPBASE>` was none.
 
 ## Final report
 
-End with this report and nothing after it:
+End with this report and nothing after it. Its last line is the command that removes the empty `~/.claude/session-env/<DRIVER_SID>` folder Claude Code makes for this session and won't let it delete.
 
 ```
 E2E RESULT: PASS | FAIL
-RUN: <RUN> (board <N>)
+RUN: <RUN> (board <N>, session <DRIVER_SID>)
 1 preflight: PASS|FAIL|SKIPPED — <evidence>
 2 board_setup: ...
 3 clone: ...
@@ -156,6 +159,7 @@ RUN: <RUN> (board <N>)
 11 teardown: ...
 Leftovers: none | <each one>
 Notes: <anything unexpected, or none>
+Cleanup: bash ~/workspace/claude-code/plugins/superpowers-github/tests/e2e/cleanup-session-env.sh <DRIVER_SID>
 ```
 
 `E2E RESULT` is PASS only when every step from 1 to 11 passed and there are no leftovers.
