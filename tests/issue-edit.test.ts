@@ -1,14 +1,14 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, repoData, router, url, workData } from './kit.ts'
+import { argvs, boot, callTool, repoData, router, url } from './kit.ts'
 
 const FILES = 'https://github.com/user-attachments/files/1/idea.md'
 const ZIP = 'https://github.com/user-attachments/files/2/z.zip'
 const current = `Body\n\n## Attachments\n- [idea.md](${FILES})\n- [z.zip](${ZIP})\n`
 
-const world = () =>
+const world = (boards?: string[]) =>
   router({
-    graphql: { Repo: () => repoData({}), Work: () => workData({ issue: { number: 11, body: current } }) },
-    cli: s => (s.argv[1] === 'issue' ? {} : undefined),
+    graphql: { Repo: () => repoData({ boards }) },
+    cli: s => (s.argv[2] === 'view' ? { stdout: JSON.stringify({ body: current }) } : s.argv[1] === 'issue' ? {} : undefined),
   })
 
 test('issue_edit refuses a body that drops an attachment', async ($, on) => {
@@ -25,6 +25,15 @@ test('issue_edit sets the body and the blocked-by links', async ($, on) => {
   const r = await callTool($, 'issue_edit', { issue: url(11), body, addBlockedBy: [4], removeBlockedBy: [5] })
   expect(r.deny).toBeUndefined()
   expect(w.spawned.find(s => s.argv[2] === 'edit')).toMatchObject({ argv: ['gh', 'issue', 'edit', url(11), '--body-file', '-', '--add-blocked-by', '4', '--remove-blocked-by', '5'], input: body })
+})
+
+test("issue_edit sets a body without a board: it reads the repo and the issue's body", async ($, on) => {
+  const w = await boot($, on, { reply: world(['Demo Backlog']) })
+  const body = `New\n- ${FILES}\n- ${ZIP}\n`
+  const r = await callTool($, 'issue_edit', { issue: url(11), body })
+  expect(r.deny).toBeUndefined()
+  expect(argvs(w)).toContain(`gh issue view ${url(11)} --json body`)
+  expect(w.spawned.find(s => s.argv[2] === 'edit')).toMatchObject({ argv: ['gh', 'issue', 'edit', url(11), '--body-file', '-'], input: body })
 })
 
 test('issue_edit sets a title alone without reading the body', async ($, on) => {

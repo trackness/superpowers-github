@@ -3,7 +3,8 @@ import { gh, graphql, type Io, parseIssue, run, ToolError } from './gh.ts'
 
 export type Board = { owner: string; number: number; title: string; url: string }
 export type RepoInfo = { repo: string; isPrivate: boolean; board?: Board }
-export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
+// `archived`: the card's item ID when its card on the board is archived.
+export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archived?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
 export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[] }
 
 export const NOT_DONE = `only GitHub's "Item closed" workflow moves an issue to Done, when the issue is closed`
@@ -47,7 +48,7 @@ const WORK = `fragment Item on Issue {
   number url title closed body
   blockedBy(first: 100) { nodes { number } }
   blocking(first: 100) { nodes { number } }
-  projectItems(first: 100) { nodes { project { url } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } }
+  projectItems(first: 100) { nodes { id isArchived project { url } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } }
 }
 query Work($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -74,6 +75,9 @@ export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
   return { repo: r.nameWithOwner, isPrivate: r.isPrivate, board: p && { owner: p.owner.login, number: p.number, title: p.title, url: p.url } }
 }
 
+// The body alone: for a tool that needs no board.
+export const issueBody = async (io: Io, url: string): Promise<string> => (JSON.parse(await gh(io, ['issue', 'view', url, '--json', 'body'])) as { body: string }).body
+
 export function requireBoard(info: RepoInfo): Board {
   if (!info.board) throw new ToolError(`${info.repo} has no board. Ask James once whether to set one up, then call ${TOOL_PREFIX}board_setup.`)
   return info.board
@@ -91,10 +95,10 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   const item = (n: any): Item => {
     const onBoard = n.projectItems.nodes.find((p: any) => p?.project?.url === board.url)
     const numbers = (c: any): number[] => c.nodes.map((i: any) => i.number)
-    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
+    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, archived: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
   }
+  // A missing issue or a PR number never gets here: GitHub answers NOT_FOUND, and graphql throws its message.
   const raw = repository.issue
-  if (!raw) throw new ToolError(`${ref.url} is not an issue.`)
   return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item) }
 }
 
@@ -111,6 +115,8 @@ export async function setStatus(io: Io, board: Board, issue: Item, status: Statu
   if (status === 'Done') throw new ToolError(NOT_DONE)
   const item = [String(board.number), '--owner', board.owner, '--url', issue.url]
   if (!issue.onBoard) await gh(io, ['project', 'item-add', ...item])
+  // An archived card stays hidden on the board and from work_list, so a move brings it back.
+  if (issue.archived) await gh(io, ['project', 'item-archive', String(board.number), '--owner', board.owner, '--id', issue.archived, '--undo'])
   await gh(io, ['project', 'item-edit', ...item, '--field', 'Status', '--value', status])
 }
 
@@ -128,7 +134,7 @@ export async function recomputeParent(io: Io, work: Work, moved?: { number: numb
 export function closedNotDone(work: Work): string[] {
   const { title, url } = work.board
   return [work.parent ?? work.issue, ...work.tasks]
-    .filter(i => i.closed && i.status !== 'Done')
+    .filter(i => i.closed && i.onBoard && i.status !== 'Done') // no workflow moves an issue that is not on the board
     .map(i => `#${i.number} is closed but not in Done on board "${title}" (${url}): "Item closed" isn't moving closed issues. Open the board's Workflows and turn on "Item closed" with Status = Done.`)
 }
 

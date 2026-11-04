@@ -1,4 +1,4 @@
-import { assertWritable, readWork } from '../board.ts'
+import { assertWritable, issueBody, repoInfo } from '../board.ts'
 import { checkBody } from '../body.ts'
 import { TMP_ROOT } from '../config.ts'
 import { gh, parseIssue, runOk, ToolError } from '../gh.ts'
@@ -22,8 +22,8 @@ export const attachTool: Tool = {
   async run(io, input, call) {
     const ref = parseIssue(str(input, 'issue'))
     const [path, name] = [str(input, 'path'), optStr(input, 'name')]
-    const work = await readWork(io, ref.url)
-    assertWritable(work.repo)
+    assertWritable(await repoInfo(io, ref.repo))
+    const current = await issueBody(io, ref.url)
     let file = path
     if ((await io.fs.stat(path)).kind === 'dir') {
       const dir = `${TMP_ROOT}/${call.tool_use_id}`
@@ -35,7 +35,7 @@ export const attachTool: Tool = {
     const uploaded = await upload(io, file, ref.repo)
     let body: string
     try {
-      body = withAttachment(work.issue.body, uploaded)
+      body = withAttachment(current, uploaded)
       checkBody(body)
     } catch (e) {
       throw new ToolError(`${(e as Error).message} The file was already uploaded, and is not attached: ${uploaded.markdown}`)

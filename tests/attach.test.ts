@@ -1,15 +1,16 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, repoData, router, type Reply, type Spawned, url, workData } from './kit.ts'
+import { argvs, boot, callTool, repoData, router, type Reply, type Spawned, url } from './kit.ts'
 
 const IDEA = 'https://github.com/user-attachments/files/7/idea.md'
 const UPLOADED = `[idea.md](${IDEA})\n`
 
-const world = (o: { body?: string; ext?: string; upload?: Reply } = {}) =>
+const world = (o: { body?: string; ext?: string; upload?: Reply; boards?: string[] } = {}) =>
   router({
-    graphql: { Repo: () => repoData({}), Work: () => workData({ issue: { number: 10, body: o.body ?? 'B' } }) },
+    graphql: { Repo: () => repoData({ boards: o.boards }) },
     cli: (s: Spawned) => {
       if (s.argv[1] === 'extension') return { stdout: o.ext ?? 'gh image\tdrogers0/gh-image\tv1.4.1\n' }
       if (s.argv[1] === 'image') return o.upload ?? { stdout: `fast upload unavailable (HTTP 422); using browser session\n${UPLOADED}` }
+      if (s.argv.slice(1, 3).join(' ') === 'issue view') return { stdout: JSON.stringify({ body: o.body ?? 'B' }) }
       if (s.argv[1] === 'issue' || s.argv[0] === 'mkdir' || s.argv[0] === 'zip') return {}
       return undefined
     },
@@ -29,6 +30,14 @@ test('attach uploads a file and lists it under Attachments', async ($, on) => {
   const r = await callTool($, 'attach', { issue: url(10), path: '/tmp/x/idea.md' })
   expect(r.deny).toBeUndefined()
   expect(w.spawned.find(s => s.argv[1] === 'image')!.argv).toEqual(['gh', 'image', '/tmp/x/idea.md', '--repo', 'trackness/demo'])
+  expect(w.spawned.find(s => s.argv[2] === 'edit')!.input).toBe(`B\n\n## Attachments\n\n- [idea.md](${IDEA})\n`)
+})
+
+test("attach needs no board: it reads the repo and the issue's body", async ($, on) => {
+  const w = await boot($, on, { reply: world({ boards: ['Demo Backlog'] }), files })
+  const r = await callTool($, 'attach', { issue: url(10), path: '/tmp/x/idea.md' })
+  expect(r.deny).toBeUndefined()
+  expect(argvs(w)).toContain(`gh issue view ${url(10)} --json body`)
   expect(w.spawned.find(s => s.argv[2] === 'edit')!.input).toBe(`B\n\n## Attachments\n\n- [idea.md](${IDEA})\n`)
 })
 

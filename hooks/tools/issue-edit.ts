@@ -1,4 +1,4 @@
-import { assertWritable, readWork, repoInfo } from '../board.ts'
+import { assertWritable, issueBody, repoInfo } from '../board.ts'
 import { attachmentUrls, checkBody } from '../body.ts'
 import { gh, parseIssue, ToolError } from '../gh.ts'
 import { nums, optStr, str, type Tool } from '../tools.ts'
@@ -26,9 +26,8 @@ export const issueEditTool: Tool = {
     if (body === undefined) assertWritable(await repoInfo(io, ref.repo))
     else {
       checkBody(body)
-      const work = await readWork(io, ref.url)
-      assertWritable(work.repo)
-      const dropped = attachmentUrls(work.issue.body).filter(u => !body.includes(u))
+      assertWritable(await repoInfo(io, ref.repo))
+      const dropped = attachmentUrls(await issueBody(io, ref.url)).filter(u => !body.includes(u))
       if (dropped.length) throw new ToolError(`the new body drops these attachments, which can't be re-referenced once dropped: ${dropped.join(', ')}. Keep them in the ## Attachments list.`)
     }
     const args = ['issue', 'edit', ref.url]

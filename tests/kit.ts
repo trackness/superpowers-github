@@ -83,7 +83,7 @@ export function router(r: { graphql?: Record<string, (variables: any) => unknown
   return Object.assign(reply, { seen })
 }
 
-export type ItemSpec = { number: number; status?: Status; closed?: boolean; title?: string; body?: string; onBoard?: boolean; blockedBy?: number[]; blocking?: number[] }
+export type ItemSpec = { number: number; status?: Status; closed?: boolean; title?: string; body?: string; onBoard?: boolean; archived?: boolean; blockedBy?: number[]; blocking?: number[] }
 
 const boardUrl = (n: number) => `https://github.com/users/trackness/projects/${n}`
 const titleOf = (s: ItemSpec) => s.title ?? `Task ${s.number}: T${s.number}`
@@ -98,6 +98,7 @@ export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: strin
 }
 
 // The answer to op `Work`: with `parent` the issue is a task and `tasks` are the parent's sub-issues; otherwise they are the issue's own.
+// An issue's card on the board has the item ID `item-<number>`.
 export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; board?: number; repo?: string }): unknown {
   const [repo, board, tasks] = [o.repo ?? DEMO, o.board ?? 1, o.tasks ?? []]
   const issue = (s: ItemSpec) => ({
@@ -108,7 +109,7 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
     body: s.body ?? '',
     blockedBy: numbers(s.blockedBy),
     blocking: numbers(s.blocking),
-    projectItems: { nodes: s.onBoard === false ? [] : [{ project: { url: boardUrl(board) }, status: s.status ? { name: s.status } : null }] },
+    projectItems: { nodes: s.onBoard === false ? [] : [{ id: `item-${s.number}`, isArchived: s.archived ?? false, project: { url: boardUrl(board) }, status: s.status ? { name: s.status } : null }] },
   })
   const subIssues = (specs: ItemSpec[]) => ({ nodes: specs.map(issue) })
   const parent = o.parent ? { ...issue(o.parent), subIssues: subIssues(tasks) } : null

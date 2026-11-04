@@ -8,7 +8,7 @@ const line = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status'
 export const statusTool: Tool = {
   spec: {
     name: 'status',
-    description: `Reads or moves a piece of work on its repo's board. With only \`issue\`, returns the parent and each of its tasks as \`[#n title](url) — <Status>\` lines. With \`status\`, moves a task and then recomputes its parent's column from its tasks, or moves a parent that has no tasks (an idea, a small change). A parent with tasks is refused: its column is derived from its tasks. Done is refused: ${NOT_DONE}. Also names any closed issue that is not in Done, which means the board's "Item closed" workflow is off.`,
+    description: `Reads or moves a piece of work on its repo's board. With only \`issue\`, returns the parent and each of its tasks as \`[#n title](url) — <Status>\` lines. With \`status\`, moves a task and then recomputes its parent's column from its tasks, or moves a parent that has no tasks (an idea, a small change). A parent with tasks is refused: its column is derived from its tasks. A task is refused Idea and Designed. Done is refused: ${NOT_DONE}. Also names any closed issue that is not in Done, which means the board's "Item closed" workflow is off.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -26,8 +26,10 @@ export const statusTool: Tool = {
     const work = await readWork(io, issue)
     if (!status) return [work.parent ?? work.issue, ...work.tasks].map(line).concat(closedNotDone(work)).join('\n')
     if (!work.parent && work.tasks.length) throw new ToolError(`${link(work.issue)} has tasks, so its column is derived from its tasks: move a task instead.`)
+    if (work.parent && (status === 'Idea' || status === 'Designed')) throw new ToolError(`${link(work.issue)} is a task, and a task is never in Idea or Designed: move it to Todo, In Progress or In Review.`)
     await setStatus(io, work.board, work.issue, status)
-    const parent = work.parent && (await recomputeParent(io, work, { number: work.issue.number, status }))
+    // Read again after the write, so a sibling task another session moved meanwhile counts too.
+    const parent = work.parent && (await recomputeParent(io, await readWork(io, issue), { number: work.issue.number, status }))
     return [`Moved ${link(work.issue)} to ${status}.`, parent, ...closedNotDone(work)].filter(Boolean).join('\n')
   },
 }
