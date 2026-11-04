@@ -6,10 +6,10 @@ const FILES = 'https://github.com/user-attachments/files/1/idea.md'
 const ZIP = 'https://github.com/user-attachments/files/2/z.zip'
 const current = `Body\n\n## Attachments\n- [idea.md](${FILES})\n- [z.zip](${ZIP})\n`
 
-const world = (boards?: string[]) =>
+const world = (boards?: string[], body = current) =>
   router({
     graphql: { Repo: () => repoData({ boards }) },
-    cli: s => (s.argv[2] === 'view' ? { stdout: JSON.stringify({ body: current }) } : s.argv[1] === 'issue' ? {} : undefined),
+    cli: s => (s.argv[2] === 'view' ? { stdout: JSON.stringify({ body }) } : s.argv[1] === 'issue' ? {} : undefined),
   })
 
 test('issue_edit refuses a body that drops an attachment', async ($, on) => {
@@ -18,6 +18,14 @@ test('issue_edit refuses a body that drops an attachment', async ($, on) => {
   expect(r.deny).toContain(ZIP)
   expect(r.deny).not.toContain(FILES)
   expect(argvs(w).some(a => a.startsWith('gh issue edit'))).toBe(false)
+})
+
+test('issue_edit reads punctuation after an attachment URL as the end of the sentence, not part of the URL', async ($, on) => {
+  const w = await boot($, on, { reply: world(undefined, `Screens are in ${ZIP}. The idea: ${FILES}, then more!`) })
+  const body = `New\n\n## Attachments\n- [z.zip](${ZIP})\n- [idea.md](${FILES})\n`
+  const r = await callTool($, 'issue_edit', { issue: url(11), body })
+  expect(r.deny).toBeUndefined()
+  expect(w.spawned.find(s => s.argv[2] === 'edit')).toMatchObject({ input: body })
 })
 
 test('issue_edit sets the body and the blocked-by links', async ($, on) => {
