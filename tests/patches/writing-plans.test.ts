@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-import { applyPatches } from '../hooks/patches/engine.ts'
-import { writingPlans } from '../hooks/patches/writing-plans.ts'
-import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
-import { boot, router } from './kit.ts'
+import { applyPatches } from '../../hooks/patches/engine'
+import { writingPlans } from '../../hooks/patches/writing-plans'
+import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { boot, router } from '../kit'
 
 const ABSENT = [
   'docs/superpowers/plans/', 'executing-plans', '**Spec:**', 'Native', 'Which execution approach', '# [Feature Name] Implementation Plan',
@@ -18,7 +18,7 @@ const PRESENT = [
   '65,536',
   'should we start?',
   'superpowers:subagent-driven-development',
-  'get its name and visibility from James',
+  'get its name and visibility from your human partner',
   'with `appendBody` set to the `## Plan` section',
   '`blockedBy` listing the issue numbers (the `#n` from `mcp__superpowers-github__issue_create` or the status listing), not the task numbers',
   '`removeBlockedBy` where the fix is about order, giving the issue numbers (the `#n` from `mcp__superpowers-github__issue_create` or the status listing), not the task numbers',

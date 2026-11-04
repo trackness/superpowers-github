@@ -1,18 +1,19 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
-import { TOOL_PREFIX } from '../hooks/config.ts'
-import { attachTool } from '../hooks/tools/attach.ts'
-import { boardSetupTool } from '../hooks/tools/board-setup.ts'
-import { designWriteTool } from '../hooks/tools/design-write.ts'
-import { ideaMoveTool } from '../hooks/tools/idea-move.ts'
-import { issueCreateTool } from '../hooks/tools/issue-create.ts'
-import { issueEditTool } from '../hooks/tools/issue-edit.ts'
-import { prCheckTool } from '../hooks/tools/pr-check.ts'
-import { reviewPackageTool } from '../hooks/tools/review-package.ts'
-import { runFolderTool } from '../hooks/tools/run-folder.ts'
-import { statusTool } from '../hooks/tools/status.ts'
-import { workListTool } from '../hooks/tools/work-list.ts'
-import { boot, callTool, router, url, type Verdict } from './kit.ts'
+import { TOOL_PREFIX } from '../../hooks/config'
+import { bool, nums, optStr, str } from '../../hooks/tools/engine'
+import { attachTool } from '../../hooks/tools/attach'
+import { boardSetupTool } from '../../hooks/tools/board-setup'
+import { designWriteTool } from '../../hooks/tools/design-write'
+import { ideaMoveTool } from '../../hooks/tools/idea-move'
+import { issueCreateTool } from '../../hooks/tools/issue-create'
+import { issueEditTool } from '../../hooks/tools/issue-edit'
+import { prCheckTool } from '../../hooks/tools/pr-check'
+import { reviewPackageTool } from '../../hooks/tools/review-package'
+import { runFolderTool } from '../../hooks/tools/run-folder'
+import { statusTool } from '../../hooks/tools/status'
+import { workListTool } from '../../hooks/tools/work-list'
+import { boot, callTool, router, url, type Verdict } from '../kit'
 
 const RUN_FOLDER = `${TOOL_PREFIX}run_folder`
 const git = router({ cli: s => (s.argv[1] === 'rev-parse' ? { stdout: '/work/repo\n' } : s.argv[0] === 'mkdir' ? {} : undefined) })
@@ -35,7 +36,7 @@ test('a tool asks the permission check with its own arguments, and a deny runs n
   expect(w.spawned).toEqual([])
 })
 
-// The ask goes to James as AskUserQuestion; this hook answers it as he would.
+// $.ui.ask reaches the user as an AskUserQuestion tool call.
 const answer = (on: On, label: string) => {
   const questions: string[] = []
   on('tool.call', { tool: 'AskUserQuestion' }, (_, e: any) => {
@@ -44,12 +45,11 @@ const answer = (on: On, label: string) => {
   })
   return questions
 }
-// An ask a settings rule decided: the one ask the mod's vouch leaves standing.
-const ask = (): Verdict => ({ decision: 'ask', reason: 'Asked by a rule.', rule: RUN_FOLDER })
+const ruleAsk = (): Verdict => ({ decision: 'ask', reason: 'Asked by a rule.', rule: RUN_FOLDER })
 
-test('an ask that James allows runs the tool', async ($, on) => {
+test('an ask that the user allows runs the tool', async ($, on) => {
   const questions = answer(on, 'Yes')
-  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ask() : { decision: 'allow' }) })
+  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ruleAsk() : { decision: 'allow' }) })
   expect((await callTool($, 'run_folder', { parent: url(12) })).text).toBe('/work/repo/.superpowers/sdd/12')
   expect(questions).toHaveLength(1)
   expect(questions[0]).toContain(RUN_FOLDER)
@@ -57,16 +57,16 @@ test('an ask that James allows runs the tool', async ($, on) => {
   expect(w.spawned).not.toEqual([])
 })
 
-test('an ask that James refuses runs nothing', async ($, on) => {
+test('an ask that the user refuses runs nothing', async ($, on) => {
   answer(on, 'No')
-  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ask() : { decision: 'allow' }) })
+  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ruleAsk() : { decision: 'allow' }) })
   expect((await callTool($, 'run_folder', { parent: url(12) })).deny).toContain('did not allow')
   expect(w.spawned).toEqual([])
 })
 
-test('an ask that cannot be put to James runs nothing', async ($, on) => {
+test('an ask that cannot be put to the user runs nothing', async ($, on) => {
   on('tool.call', { tool: 'AskUserQuestion' }, () => ({ deny: 'no one to ask' }))
-  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ask() : { decision: 'allow' }) })
+  const w = await boot($, on, { reply: git, check: e => (e.tool === RUN_FOLDER ? ruleAsk() : { decision: 'allow' }) })
   expect((await callTool($, 'run_folder', { parent: url(12) })).deny).toContain('no one to ask')
   expect(w.spawned).toEqual([])
 })
@@ -98,11 +98,11 @@ test('an ask or deny a rule decided, and an ask under an org ceiling, stand as t
 // Core's plan-mode ask, as 2.1.318 words it (Ooe): ruleless, so only its reason sets it apart.
 const planMode = (e: { tool: string }): Verdict => ({ decision: 'ask', reason: `Cannot call ${e.tool} while in plan mode.` })
 
-test('in plan mode the vouch stands aside, so every call of the mod\'s tools is put to James', async ($, on) => {
+test('in plan mode the vouch stands aside, so every call of the mod\'s tools is put to the user',async ($, on) => {
   const questions = answer(on, 'No')
   const w = await boot($, on, { reply: git, check: e => (e.tool.startsWith(TOOL_PREFIX) ? planMode(e) : { decision: 'allow' }) })
   for (const name of w.registered) expect(await $.tool.check({ tool: `${TOOL_PREFIX}${name}`, input: {} })).toEqual(planMode({ tool: `${TOOL_PREFIX}${name}` }))
-  expect((await callTool($, 'idea_move', { issue: url(12) })).deny).toBe(`James did not allow ${TOOL_PREFIX}idea_move.`)
+  expect((await callTool($, 'idea_move', { issue: url(12) })).deny).toBe(`Your human partner did not allow ${TOOL_PREFIX}idea_move.`)
   expect(questions).toHaveLength(1)
   expect(questions[0]).toContain('while in plan mode')
   expect(w.spawned).toEqual([])
@@ -117,4 +117,17 @@ test('an ask another mod\'s hook made stands', async ($, on) => {
 test('the vouch matches only the mod\'s own tool names', async ($, on) => {
   await boot($, on, { reply: git, check: ruleless })
   for (const tool of ['Bash', 'mcp__other__run_folder', `${TOOL_PREFIX}not_a_tool`]) expect(await $.tool.check({ tool, input: {} })).toEqual(ruleless())
+})
+
+test('the input readers name the key on a wrong type', () => {
+  expect(str({ parent: 'x' }, 'parent')).toBe('x')
+  expect(() => str({}, 'parent')).toThrow('parent')
+  expect(optStr({}, 'repo')).toBeUndefined()
+  expect(() => optStr({ repo: 5 }, 'repo')).toThrow('repo')
+  expect(nums({}, 'blockedBy')).toEqual([])
+  expect(nums({ blockedBy: [3, 4] }, 'blockedBy')).toEqual([3, 4])
+  expect(() => nums({ blockedBy: [3, '4'] }, 'blockedBy')).toThrow('blockedBy')
+  expect(bool({}, 'repair')).toBe(false)
+  expect(bool({ repair: true }, 'repair')).toBe(true)
+  expect(() => bool({ repair: 'yes' }, 'repair')).toThrow('repair')
 })

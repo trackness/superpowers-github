@@ -1,5 +1,5 @@
-import { STATUSES, type Status, WORKFLOWS } from './config.ts'
-import { graphql, type Io, ToolError } from './gh.ts'
+import { STATUSES, type Status, WORKFLOW_MUST_BE_ON } from '../config'
+import { graphql, type Io, ModelFacingError } from './gh'
 
 export type StatusField = { projectId: string; fieldId: string; options: { id: string; name: string }[] }
 export type Workflow = { id: string; name: string; enabled: boolean }
@@ -55,18 +55,16 @@ const project = async (io: Io, op: string, query: string, owner: string, number:
 
 export async function statusField(io: Io, owner: string, number: number): Promise<StatusField> {
   const p = await project(io, 'Fields', FIELDS, owner, number)
-  if (!p.field?.id) throw new ToolError(`Board ${number} of ${owner} has no single-select field named Status.`)
+  if (!p.field?.id) throw new ModelFacingError(`Board ${number} of ${owner} has no single-select field named Status.`)
   return { projectId: p.id, fieldId: p.field.id, options: p.field.options }
 }
 
-// The six in order. An option the field already has keeps its ID, so "Item closed" still finds Done.
-// `drop`: James agreed to remove the options outside the six, and their items' Status with them.
-export async function setOptions(io: Io, field: StatusField, drop: boolean): Promise<void> {
+export async function setOptions(io: Io, field: StatusField, dropOptions: boolean): Promise<void> {
   const names = field.options.map(o => o.name)
   // Without its own ID, a new Done is not the option "Item closed" sets, and this write deletes that one.
-  if (!names.includes('Done')) throw new ToolError(`The Status field has no option named exactly "Done" (it has: ${names.join(', ') || 'none'}), so repair would make a new Done and "Item closed" would set nothing. Tell James to rename the option "Item closed" sets to Done on the board (a rename keeps its ID), then call board_setup again with repair: true.`)
+  if (!names.includes('Done')) throw new ModelFacingError(`The Status field has no option named exactly "Done" (it has: ${names.join(', ') || 'none'}), so repair would make a new Done and "Item closed" would set nothing. Tell your human partner to rename the option "Item closed" sets to Done on the board (a rename keeps its ID), then call board_setup again with repair: true.`)
   const others = names.filter(n => !(STATUSES as readonly string[]).includes(n))
-  if (others.length && !drop) throw new ToolError(`Repair removes these Status options, and their items lose their Status: ${others.join(', ')}. Ask James first; only once he agrees, call board_setup again with repair: true and dropOptions: true.`)
+  if (others.length && !dropOptions) throw new ModelFacingError(`Repair removes these Status options, and their items lose their Status: ${others.join(', ')}. Ask your human partner first; only once they agree, call board_setup again with repair: true and dropOptions: true.`)
   // An undefined id drops out of the JSON body, and GitHub gives that option a new one.
   const options = STATUSES.map(name => ({ id: field.options.find(o => o.name === name)?.id, name, ...OPTION_STYLE[name] }))
   await graphql(io, 'SetOptions', SET_OPTIONS, { fieldId: field.fieldId, options })
@@ -76,9 +74,8 @@ export async function workflows(io: Io, owner: string, number: number): Promise<
   return (await project(io, 'Workflows', WORKFLOW_LIST, owner, number)).workflows.nodes
 }
 
-// A must-be-off workflow that is deleted or disabled is fine.
 export function workflowDiffs(list: Workflow[]): string[] {
-  return Object.entries(WORKFLOWS).flatMap(([name, mustBeOn]) => {
+  return Object.entries(WORKFLOW_MUST_BE_ON).flatMap(([name, mustBeOn]) => {
     const found = list.filter(w => w.name === name)
     const on = found.some(w => w.enabled)
     if (mustBeOn) return !found.length ? [`${name}: missing, must be on`] : on ? [] : [`${name}: off, must be on`]
@@ -88,7 +85,7 @@ export function workflowDiffs(list: Workflow[]): string[] {
 
 // The API can't switch a workflow off, and a deleted one can't fire.
 export async function deleteOffWorkflows(io: Io, list: Workflow[]): Promise<void> {
-  const off = list.filter(w => WORKFLOWS[w.name] === false)
+  const off = list.filter(w => WORKFLOW_MUST_BE_ON[w.name] === false)
   for (const w of off) await graphql(io, 'DeleteWorkflow', DELETE_WORKFLOW, { workflowId: w.id })
 }
 

@@ -1,9 +1,9 @@
-import { BODY_LIMIT } from './config.ts'
-import { ToolError } from './gh.ts'
+import { BODY_LIMIT } from '../config'
+import { ModelFacingError } from './gh'
 
 export function checkBody(body: string, what = 'body'): void {
   const n = [...body].length
-  if (n > BODY_LIMIT) throw new ToolError(`${what} is ${n} characters; GitHub's limit is 65,536. Rewrite it to fit: nothing is split or truncated.`)
+  if (n > BODY_LIMIT) throw new ModelFacingError(`${what} is ${n} characters; GitHub's limit is 65,536. Rewrite it to fit: nothing is split or truncated.`)
 }
 
 // A URL never ends in punctuation, so a full stop or comma after it ends the sentence, not the URL.

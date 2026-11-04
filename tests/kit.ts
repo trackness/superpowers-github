@@ -1,9 +1,13 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { type Status, TOOL_PREFIX } from '../hooks/config.ts'
+import { type Status, TOOL_PREFIX } from '../hooks/config'
 
 export const DEMO = 'trackness/demo'
 export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issues/${n}`
+
+// The run folder for parent #12 in the /work/repo checkout, and the .gitignore that keeps it out of git.
+export const DIR = '/work/repo/.superpowers/sdd/12'
+export const IGNORE = '/work/repo/.superpowers/sdd/.gitignore'
 
 export type Spawned = { argv: string[]; cwd?: string; input?: string }
 export type Reply = { stdout?: string; stderr?: string; code?: number }
@@ -13,7 +17,7 @@ export type Verdict = { decision: 'allow' | 'ask' | 'deny'; reason?: string; rul
 // The fs.write stand-in replaces the engine's own write, so it keeps the engine's limit (checked live on 2.1.317).
 const WRITE_LIMIT = 4 * 1024 * 1024
 
-// Stands in for everything beneath the plugin, then starts the session. The permission verdict is `check`'s, allow by default.
+// Stands in for everything beneath the plugin, then starts the session.
 export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply; files?: Record<string, string>; dirs?: string[]; cwd?: string; check?: (e: { tool: string; input: unknown }) => Verdict }): Promise<World> {
   const w: World = { spawned: [], written: {}, registered: [] }
   const files = o.files ?? {}
@@ -53,7 +57,6 @@ export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply;
 
 let calls = 0
 
-// Calls one of the mod's tools as the model would, with a tool_use_id of its own.
 export async function callTool($: Engine, name: string, input: Record<string, unknown>): Promise<{ text?: string; deny?: string }> {
   const r = await $.tool.call({ ...input, tool: `${TOOL_PREFIX}${name}` as const, tool_use_id: `toolu_test_${++calls}` })
   if (r.deny !== undefined) return { deny: r.deny }
@@ -63,7 +66,6 @@ export async function callTool($: Engine, name: string, input: Record<string, un
 
 export const argvs = (w: World) => w.spawned.map(s => s.argv.join(' '))
 
-// Answers `gh api graphql` by its operationName and anything else through `cli`.
 export function router(r: { graphql?: Record<string, (variables: any) => unknown>; cli?: (s: Spawned) => Reply | undefined }) {
   const seen: Record<string, any[]> = {}
   const reply = (s: Spawned): Reply => {
@@ -89,7 +91,6 @@ const boardUrl = (n: number) => `https://github.com/users/trackness/projects/${n
 const titleOf = (s: ItemSpec) => s.title ?? `Task ${s.number}: T${s.number}`
 const numbers = (ns: number[] = []) => ({ nodes: ns.map(number => ({ number })) })
 
-// The answer to op `Repo`: boards numbered from 1 in order, every one owned by trackness.
 export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: string[] }): unknown {
   const repo = o.repo ?? DEMO
   const boards = o.boards ?? [repo.split('/')[1]!]
@@ -97,8 +98,7 @@ export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: strin
   return { repository: { nameWithOwner: repo, isPrivate: o.isPrivate ?? true, projectsV2: { nodes } } }
 }
 
-// The answer to op `Work`: with `parent` the issue is a task and `tasks` are the parent's sub-issues; otherwise they are the issue's own.
-// `own` gives the issue's own sub-issues when it also has a parent. An issue's card on the board has the item ID `item-<number>`.
+// With `parent`, `tasks` are the parent's sub-issues and `own` the issue's own; otherwise `tasks` are the issue's own.
 export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; own?: ItemSpec[]; board?: number; repo?: string }): unknown {
   const [repo, board, tasks] = [o.repo ?? DEMO, o.board ?? 1, o.tasks ?? []]
   const issue = (s: ItemSpec) => ({
@@ -116,35 +116,29 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
   return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.own ?? (o.parent ? [] : tasks)), parent } } }
 }
 
-// The answer to op `ClosingRefs`: a PR into `base` (default main, the repo's default branch) with this body that closes these issues of `repo`.
-export function closingData(o: { body: string; closes: number[]; repo?: string; base?: string }): unknown {
+export function closingRefsData(o: { body: string; closes: number[]; repo?: string; base?: string }): unknown {
   const nameWithOwner = o.repo ?? DEMO
   const pullRequest = { body: o.body, baseRefName: o.base ?? 'main', closingIssuesReferences: { nodes: o.closes.map(number => ({ number, repository: { nameWithOwner } })) } }
   return { repository: { defaultBranchRef: { name: 'main' }, pullRequest } }
 }
 
-// One page of the answer to op `Items`; another page follows when `endCursor` is given.
-export function itemsPage(items: ItemSpec[], endCursor?: string): unknown {
+export function itemsPage(items: ItemSpec[], nextPageCursor?: string): unknown {
   const nodes = items.map(s => ({ status: s.status ? { name: s.status } : null, content: { number: s.number, title: titleOf(s), url: url(s.number), closed: s.closed ?? false } }))
-  return { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
+  return { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: nextPageCursor !== undefined, endCursor: nextPageCursor ?? null } } } } }
 }
 
-// One page of the answer to op `Comments`; another page follows when `endCursor` is given.
-export function commentsPage(bodies: string[], endCursor?: string): unknown {
-  return { repository: { issue: { comments: { nodes: bodies.map(body => ({ body })), pageInfo: { hasNextPage: endCursor !== undefined, endCursor: endCursor ?? null } } } } }
+export function commentsPage(bodies: string[], nextPageCursor?: string): unknown {
+  return { repository: { issue: { comments: { nodes: bodies.map(body => ({ body })), pageInfo: { hasNextPage: nextPageCursor !== undefined, endCursor: nextPageCursor ?? null } } } } }
 }
 
-// What `gh project create --format json` prints for board <n>, cut to the keys board_setup reads.
-export const projectJson = (number: number): Reply => ({ stdout: JSON.stringify({ number, id: `P${number}`, url: boardUrl(number) }) })
+export const projectCreateOutput = (number: number): Reply => ({ stdout: JSON.stringify({ number, id: `P${number}`, url: boardUrl(number) }) })
 
 const project = (p: unknown) => ({ repositoryOwner: { projectV2: p } })
 
-// The answer to op `Fields`: project P1's Status field F1, each option with the id `id-<name>`.
 export const fieldsData = (options: string[]): unknown => project({ id: 'P1', field: { id: 'F1', options: options.map(name => ({ id: `id-${name}`, name })) } })
 
-// The answer to op `Views`: one view per layout.
 export const viewsData = (layouts: string[]): unknown => project({ views: { nodes: layouts.map(layout => ({ layout })) } })
 
-// The answer to op `Workflows`: each workflow with the id `wf-<name>`; a name left out is absent (deleted).
+// A workflow left out is one GitHub has deleted.
 export const workflowsData = (enabled: Record<string, boolean>): unknown =>
   project({ workflows: { nodes: Object.entries(enabled).map(([name, on]) => ({ id: `wf-${name}`, name, enabled: on })) } })

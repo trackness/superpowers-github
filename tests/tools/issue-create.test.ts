@@ -1,12 +1,11 @@
 import { expect, test } from 'claude-code/testing'
-import { issueCreateTool } from '../hooks/tools/issue-create.ts'
-import { argvs, boot, callTool, DEMO, type Reply, repoData, router, url, workData, type World } from './kit.ts'
+import { issueCreateTool } from '../../hooks/tools/issue-create'
+import { argvs, boot, callTool, DEMO, type Reply, repoData, router, url, workData, type World } from '../kit'
 
 const edit = (n: number, s: string, board = 1) => `gh project item-edit ${board} --owner trackness --url ${url(n)} --field Status --value ${s}`
 const add = (n: number, board = 1) => `gh project item-add ${board} --owner trackness --url ${url(n)}`
 const creates = (w: World) => w.spawned.filter(s => s.argv[2] === 'create')
 
-// Answers `Repo` and `Work` (#10, Designed, with tasks #11 and #12, or `work`); `gh issue create` answers #13 (or `create`), `gh issue list` answers `list`; other `gh project` calls answer `{}`.
 const world = (o: { repo?: unknown; work?: unknown; fail?: boolean; create?: Reply; list?: Reply } = {}) =>
   router({
     graphql: { Repo: () => o.repo ?? repoData({}), Work: () => o.work ?? workData({ issue: { number: 10, status: 'Designed' }, tasks: [{ number: 11 }, { number: 12 }] }) },
@@ -16,8 +15,7 @@ const world = (o: { repo?: unknown; work?: unknown; fail?: boolean; create?: Rep
       : undefined,
   })
 
-// gh created the issue, then failed before printing its URL (its own --blocked-by step, or the connection): it exits 1.
-const partial: Reply = { code: 1, stderr: 'GraphQL: could not add the blocked-by link' }
+const createdThenFailed: Reply = { code: 1, stderr: 'GraphQL: could not add the blocked-by link' }
 const listed = (...issues: { n: number; title: string; at: string; body?: string }[]): Reply => ({ stdout: JSON.stringify(issues.map(i => ({ number: i.n, title: i.title, body: i.body ?? 'b', url: url(i.n), createdAt: i.at }))) })
 const LIST = 'gh issue list -R trackness/demo --author @me --state open --limit 20 --json number,title,body,url,createdAt'
 const OLD = '2020-01-01T00:00:00Z'
@@ -117,7 +115,7 @@ test('issue_create reports the created issue when a later step fails', async ($,
 
 test('issue_create names the issue gh created before its own later step failed', async ($, on) => {
   const list = listed({ n: 13, title: 'Task 3: Store', at: new Date().toISOString() }, { n: 12, title: 'Task 3: Store', at: OLD })
-  const w = await boot($, on, { reply: world({ create: partial, list }) })
+  const w = await boot($, on, { reply: world({ create: createdThenFailed, list }) })
   const r = await callTool($, 'issue_create', { parent: url(10), title: 'Task 3: Store', body: 'b', blockedBy: [11] })
   expect(r.deny).toContain(`created ${url(13)}, then gh's own --parent/--blocked-by step failed`)
   expect(r.deny).toContain('could not add the blocked-by link')
@@ -130,7 +128,7 @@ test('issue_create names the issue gh created before its own later step failed',
 
 test("issue_create does not name another session's issue with the same title as its own", async ($, on) => {
   const list = listed({ n: 14, title: 'Task 3: Store', at: new Date().toISOString(), body: "another session's task" })
-  const w = await boot($, on, { reply: world({ create: partial, list }) })
+  const w = await boot($, on, { reply: world({ create: createdThenFailed, list }) })
   const r = await callTool($, 'issue_create', { parent: url(10), title: 'Task 3: Store', body: 'b' })
   expect(r.deny).toContain(MAY_EXIST)
   expect(r.deny).not.toContain(url(14))
@@ -139,7 +137,7 @@ test("issue_create does not name another session's issue with the same title as 
 
 test('issue_create warns that a failed create may have made the issue when none matches', async ($, on) => {
   const list = listed({ n: 13, title: 'Other', at: new Date().toISOString() }, { n: 12, title: 'Idea', at: OLD })
-  const w = await boot($, on, { reply: world({ create: partial, list }) })
+  const w = await boot($, on, { reply: world({ create: createdThenFailed, list }) })
   const r = await callTool($, 'issue_create', idea('b'))
   expect(r.deny).toContain('could not add the blocked-by link')
   expect(r.deny).toContain(MAY_EXIST)
@@ -149,7 +147,7 @@ test('issue_create warns that a failed create may have made the issue when none 
 })
 
 test('issue_create warns that a failed create may have made the issue when the lookup fails', async ($, on) => {
-  const w = await boot($, on, { reply: world({ create: partial, list: { code: 1, stderr: 'HTTP 502' } }) })
+  const w = await boot($, on, { reply: world({ create: createdThenFailed, list: { code: 1, stderr: 'HTTP 502' } }) })
   const r = await callTool($, 'issue_create', idea('b'))
   expect(r.deny).toContain('could not add the blocked-by link')
   expect(r.deny).toContain(MAY_EXIST)

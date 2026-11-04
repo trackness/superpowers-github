@@ -1,13 +1,13 @@
 import { expect, test } from 'claude-code/testing'
-import { PATCHED_FOR, TOOL_PREFIX } from '../hooks/config.ts'
-import { brainstorming } from '../hooks/patches/brainstorming.ts'
-import { applyPatches, blockText, type PatchSet } from '../hooks/patches/engine.ts'
-import { executingPlans } from '../hooks/patches/executing-plans.ts'
-import { finishing } from '../hooks/patches/finishing.ts'
-import { subagentDrivenDevelopment } from '../hooks/patches/subagent-driven-development.ts'
-import { writingPlans } from '../hooks/patches/writing-plans.ts'
-import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
-import { boot, router } from './kit.ts'
+import { PATCHED_FOR, TOOL_PREFIX } from '../../hooks/config'
+import { brainstorming } from '../../hooks/patches/brainstorming'
+import { applyPatches, blockText, type PatchSet } from '../../hooks/patches/engine'
+import { executingPlans } from '../../hooks/patches/executing-plans'
+import { finishing } from '../../hooks/patches/finishing'
+import { subagentDrivenDevelopment } from '../../hooks/patches/subagent-driven-development'
+import { writingPlans } from '../../hooks/patches/writing-plans'
+import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { boot, router } from '../kit'
 
 const SET: PatchSet = { skill: 'superpowers:demo', patches: [
   { id: 'one', find: 'alpha\nbeta', replace: 'ALPHA', ifMissing: 'one is lost' },
@@ -18,8 +18,7 @@ test('patches apply in order, each on the text the earlier ones left', () => {
 test('a missing anchor is a failure that shows what is there now', () => {
   const r = applyPatches('alpha\nzeta gamma', SET)
   expect(r.failures.map(f => f.id)).toEqual(['one', 'two'])
-  expect(r.failures[0].nearby).toBe('alpha\nzeta gamma')
-  expect(r.failures[1].nearby).toBeUndefined()
+  expect(r.failures.map(f => f.nearby)).toEqual(['alpha\nzeta gamma', undefined])
 })
 test('an anchor found twice where once is expected blocks rather than patching both', () => {
   expect(applyPatches('alpha\nbeta alpha\nbeta', SET).failures[0]).toMatchObject({ id: 'one', found: 2 })
@@ -30,16 +29,12 @@ test('an anchor whose first line changed still shows what is there now, from the
   expect(f.nearby).toBe(renamed(f.expected))
 })
 test('the block text fences with four backticks, so an anchor\'s own fences stay inside', () => {
-  const t = blockText({ skill: 'superpowers:demo', version: '7.1.0', failures: [{ id: 'f', expected: 'a\n```\nb\n```', count: 1, found: 0, nearby: 'c\n```\nd\n```', ifMissing: 'lost' }], partial: 'P' })
+  const t = blockText({ skill: 'superpowers:demo', version: '7.1.0', pluginRoot: '/mod', failures: [{ id: 'f', expected: 'a\n```\nb\n```', count: 1, found: 0, nearby: 'c\n```\nd\n```', ifMissing: 'lost' }], partial: 'P' })
   for (const s of ['````\na\n```\nb\n```\n````', '````\nc\n```\nd\n```\n````']) expect(t).toContain(s)
 })
 test('the block text names the skill, the version, the patch, the remedy and the workaround', () => {
-  const t = blockText({ skill: 'superpowers:demo', version: '7.1.0', root: '/sp/7.1.0', failures: applyPatches('x', SET).failures, partial: 'PARTIAL' })
-  for (const s of ['superpowers:demo', '7.1.0', `written for (${PATCHED_FOR})`, 'one', 'alpha\nbeta', 'its first line does not appear', 'make-fixture.mjs /sp/7.1.0', 'set `PATCHED_FOR` in', 'claude plugin test', '/reload-plugins', 'one is lost', 'PARTIAL']) expect(t).toContain(s)
-})
-test('executing-plans reaches the model replaced', async ($, on) => {
-  await boot($, on, { reply: router({}) })
-  expect((await $.skill.prompt({ skill: 'superpowers:executing-plans', text: SKILLS['executing-plans'] })).text).toBe(executingPlans.replaceWith)
+  const t = blockText({ skill: 'superpowers:demo', version: '7.1.0', root: '/sp/7.1.0', pluginRoot: '/mod', failures: applyPatches('x', SET).failures, partial: 'PARTIAL' })
+  for (const s of ['superpowers:demo', '7.1.0', `written for (${PATCHED_FOR})`, 'one', 'alpha\nbeta', 'its first line does not appear', 'node /mod/tests/fixtures/make-fixture.mjs /sp/7.1.0', 'set `PATCHED_FOR` in `/mod/hooks/config.ts`', 'claude plugin test /mod', '/reload-plugins', 'one is lost', 'PARTIAL']) expect(t).toContain(s)
 })
 test('a skill whose anchor is missing comes back as the block text with the installed version', async ($, on) => {
   await boot($, on, { reply: router({}), files: { '/sp/9.0.0/.claude-plugin/plugin.json': '{"version":"9.0.0"}' } })

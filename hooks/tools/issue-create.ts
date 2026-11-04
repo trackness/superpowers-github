@@ -1,8 +1,8 @@
-import { assertWritable, type Board, created, createIssue, failedAfter, link, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
-import { checkBody } from '../body.ts'
-import { type Status } from '../config.ts'
-import { ToolError } from '../gh.ts'
-import { nums, optStr, str, type Tool } from '../tools.ts'
+import { type Status } from '../config'
+import { assertWritable, type Board, created, createIssue, failedAfter, link, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../github/board'
+import { checkBody } from '../github/body'
+import { ModelFacingError } from '../github/gh'
+import { nums, optStr, str, type Tool } from './engine'
 
 export const issueCreateTool: Tool = {
   spec: {
@@ -29,15 +29,15 @@ export const issueCreateTool: Tool = {
     let repo: string
     let board: Board
     if (parent) {
-      if (!/^Task \d+: /.test(title)) throw new ToolError(`A task's title must start "Task <n>: ", not "${title}".`)
+      if (!/^Task \d+: /.test(title)) throw new ModelFacingError(`A task's title must start "Task <n>: ", not "${title}".`)
       work = await readWork(io, parent)
-      if (work.parent) throw new ToolError(`${link(work.issue)} is a task of ${link(work.parent)}: give the parent issue, ${work.parent.url}.`)
+      if (work.parent) throw new ModelFacingError(`${link(work.issue)} is a task of ${link(work.parent)}: give the parent issue, ${work.parent.url}.`)
       repo = work.repo.repo
       board = work.board
     } else {
-      if (!['Idea', 'Designed'].includes(status)) throw new ToolError('status must be Idea or Designed')
+      if (!['Idea', 'Designed'].includes(status)) throw new ModelFacingError('status must be Idea or Designed')
       const r = optStr(input, 'repo')
-      if (!r) throw new ToolError('repo is required when there is no parent')
+      if (!r) throw new ModelFacingError('repo is required when there is no parent')
       const info = await repoInfo(io, r)
       repo = info.repo
       board = requireBoard(info)
@@ -48,7 +48,7 @@ export const issueCreateTool: Tool = {
       // gh links --blocked-by only after creating the issue, so a stray number would leave a task outside its parent.
       const tasks = work.tasks.map(t => t.number)
       const strays = blockedBy.filter(n => !tasks.includes(n))
-      if (strays.length) throw new ToolError(`blockedBy takes the issue numbers of ${link(work.issue)}'s tasks, not task numbers, and these are none of them: ${strays.map(n => `#${n}`).join(', ')}. Its tasks: ${work.tasks.map(link).join(', ') || 'none yet'}. Nothing was created.`)
+      if (strays.length) throw new ModelFacingError(`blockedBy takes the issue numbers of ${link(work.issue)}'s tasks, not task numbers, and these are none of them: ${strays.map(n => `#${n}`).join(', ')}. Its tasks: ${work.tasks.map(link).join(', ') || 'none yet'}. Nothing was created.`)
     }
     const links = work ? ['--parent', String(work.issue.number), ...(blockedBy.length ? ['--blocked-by', blockedBy.join(',')] : [])] : []
     const url = await createIssue(io, repo, title, body, links)

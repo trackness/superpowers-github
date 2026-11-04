@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { assertWritable, deriveParentStatus } from '../hooks/board.ts'
-import { boot, callTool, repoData, router, type Spawned, url, workData } from './kit.ts'
+import { assertWritable, deriveParentStatus } from '../../hooks/github/board'
+import { boot, callTool, repoData, router, type Spawned, url, workData } from '../kit'
 
 test('deriveParentStatus follows the spec table', () => {
   expect(deriveParentStatus(['Todo', 'Todo'])).toBe('Todo')
@@ -36,7 +36,6 @@ test('every tool that writes refuses a public ideas repo, by GitHub\'s spelling 
   const refused: [string, boolean][] = []
   for (const [name, input] of calls) refused.push([name, !!(await callTool($, name, input)).deny?.includes('must stay private')])
   expect(refused).toEqual(calls.map(([name]) => [name, true]))
-  // Only the reads that find the repo and the issue ran.
-  const read = (s: Spawned) => s.argv.join(' ') === 'gh api graphql --input -' && /"operationName":"(Repo|Work)"/.test(s.input ?? '')
-  expect(w.spawned.filter(s => !read(s)).map(s => s.argv.join(' '))).toEqual([])
+  const repoOrIssueRead = (s: Spawned) => s.argv.join(' ') === 'gh api graphql --input -' && /"operationName":"(Repo|Work)"/.test(s.input ?? '')
+  expect(w.spawned.filter(s => !repoOrIssueRead(s)).map(s => s.argv.join(' '))).toEqual([])
 })

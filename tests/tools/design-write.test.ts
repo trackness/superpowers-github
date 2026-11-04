@@ -1,11 +1,10 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, repoData, router, type Spawned, url, workData, type World } from './kit.ts'
+import { argvs, boot, callTool, repoData, router, type Spawned, url, workData, type World } from '../kit'
 
 const ZIP = 'https://github.com/user-attachments/files/3/visual-companion.zip'
 const IDEA = 'https://github.com/user-attachments/files/8/idea.md'
 
-// `later`: the body `gh issue view` answers, as if another write landed during the upload (default: `body`).
-const world = (o: { status?: 'Idea' | 'Designed'; body: string; later?: string; tasks?: number[]; editFails?: boolean; statusFails?: boolean }) =>
+const world = (o: { status?: 'Idea' | 'Designed'; body: string; bodyAfterUpload?: string; tasks?: number[]; editFails?: boolean; statusFails?: boolean }) =>
   router({
     graphql: {
       Repo: () => repoData({}),
@@ -14,7 +13,7 @@ const world = (o: { status?: 'Idea' | 'Designed'; body: string; later?: string; 
     cli: (s: Spawned) => {
       if (s.argv[1] === 'extension') return { stdout: 'gh image\tdrogers0/gh-image\tv1.4.1\n' }
       if (s.argv[1] === 'image') return { stdout: `[idea.md](${IDEA})\n` }
-      if (s.argv.slice(1, 3).join(' ') === 'issue view') return { stdout: JSON.stringify({ body: o.later ?? o.body }) }
+      if (s.argv.slice(1, 3).join(' ') === 'issue view') return { stdout: JSON.stringify({ body: o.bodyAfterUpload ?? o.body }) }
       if ((s.argv[2] === 'edit' && o.editFails) || (s.argv[2] === 'item-edit' && o.statusFails)) return { code: 1, stderr: 'HTTP 502' }
       if (s.argv[1] === 'issue' || s.argv[1] === 'project') return {}
       return undefined
@@ -122,15 +121,15 @@ test('design_write refuses an attachment the idea holds other than as a link, be
 })
 
 test('design_write builds the new body on the one read after the upload', async ($, on) => {
-  const later = `my idea\n\n## Attachments\n\n- [visual-companion.zip](${ZIP})\n`
-  const w = await boot($, on, { reply: world({ body: 'my idea', later }) })
+  const bodyAfterUpload = `my idea\n\n## Attachments\n\n- [visual-companion.zip](${ZIP})\n`
+  const w = await boot($, on, { reply: world({ body: 'my idea', bodyAfterUpload }) })
   const r = await callTool($, 'design_write', { issue: url(10), design: 'THE DESIGN' })
   expect(r.deny).toBeUndefined()
   expect(w.spawned.find(s => s.argv[2] === 'edit')!.input).toBe(`THE DESIGN\n\n## Attachments\n\n- [visual-companion.zip](${ZIP})\n- [idea.md](${IDEA})\n`)
 })
 
 test('design_write refuses when the idea changed during the upload, and names the upload', async ($, on) => {
-  const w = await boot($, on, { reply: world({ body: 'my idea', later: 'my idea, changed' }) })
+  const w = await boot($, on, { reply: world({ body: 'my idea', bodyAfterUpload: 'my idea, changed' }) })
   const r = await callTool($, 'design_write', { issue: url(10), design: 'THE DESIGN' })
   expect(r.deny).toContain('changed')
   expect(r.deny).toContain('unchanged')

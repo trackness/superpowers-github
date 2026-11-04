@@ -1,18 +1,17 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, repoData, router, type Reply, type Spawned, url } from './kit.ts'
+import { argvs, boot, callTool, repoData, router, type Reply, type Spawned, url } from '../kit'
 
 const IDEA = 'https://github.com/user-attachments/files/7/idea.md'
 const UPLOADED = `[idea.md](${IDEA})\n`
 
-// `later`: the body every read after the first answers, as if another write landed during the upload.
-const world = (o: { body?: string; later?: string; ext?: string; upload?: Reply; boards?: string[]; editFails?: boolean } = {}) => {
+const world = (o: { body?: string; bodyAfterUpload?: string; ext?: string; upload?: Reply; boards?: string[]; editFails?: boolean } = {}) => {
   let views = 0
   return router({
     graphql: { Repo: () => repoData({ boards: o.boards }) },
     cli: (s: Spawned) => {
       if (s.argv[1] === 'extension') return { stdout: o.ext ?? 'gh image\tdrogers0/gh-image\tv1.4.1\n' }
       if (s.argv[1] === 'image') return o.upload ?? { stdout: `fast upload unavailable (HTTP 422); using browser session\n${UPLOADED}` }
-      if (s.argv.slice(1, 3).join(' ') === 'issue view') return { stdout: JSON.stringify({ body: (views++ ? o.later : undefined) ?? o.body ?? 'B' }) }
+      if (s.argv.slice(1, 3).join(' ') === 'issue view') return { stdout: JSON.stringify({ body: (views++ ? o.bodyAfterUpload : undefined) ?? o.body ?? 'B' }) }
       if (s.argv[2] === 'edit' && o.editFails) return { code: 1, stderr: 'HTTP 502' }
       if (s.argv[1] === 'issue' || s.argv[0] === 'mkdir' || s.argv[0] === 'zip') return {}
       return undefined
@@ -73,7 +72,6 @@ test('attach zips a directory before uploading it', async ($, on) => {
   expect(zip.cwd).toBe('/tmp/brainstorm-1/content')
   expect(Z).toMatch(/^\/tmp\/superpowers-github\/[^/]+\/visual-companion\.zip$/)
   expect(w.spawned.find(s => s.argv[1] === 'image')!.argv[2]).toBe(Z)
-  // the output folder exists before zip writes into it
   expect(argvs(w)).toContain(`mkdir -p ${Z.replace('/visual-companion.zip', '')}`)
 })
 
@@ -128,14 +126,14 @@ test('attach checks that the body has room before uploading anything', async ($,
 
 test('attach builds the new body on the one read after the upload', async ($, on) => {
   const A = 'https://github.com/user-attachments/files/1/a'
-  const w = await boot($, on, { reply: world({ later: `B\n\n## Attachments\n\n- [a](${A})\n` }), files })
+  const w = await boot($, on, { reply: world({ bodyAfterUpload: `B\n\n## Attachments\n\n- [a](${A})\n` }), files })
   const r = await callTool($, 'attach', { issue: url(10), path: '/tmp/x/idea.md' })
   expect(r.deny).toBeUndefined()
   expect(w.spawned.find(s => s.argv[2] === 'edit')!.input).toBe(`B\n\n## Attachments\n\n- [a](${A})\n- [idea.md](${IDEA})\n`)
 })
 
 test('attach keeps the uploaded reference when the new body is too long', async ($, on) => {
-  const w = await boot($, on, { reply: world({ later: 'x'.repeat(65_530) }), files })
+  const w = await boot($, on, { reply: world({ bodyAfterUpload: 'x'.repeat(65_530) }), files })
   const r = await callTool($, 'attach', { issue: url(10), path: '/tmp/x/idea.md' })
   expect(r.deny).toContain('65,536')
   expect(r.deny).toContain(IDEA)

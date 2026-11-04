@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-import { applyPatches } from '../hooks/patches/engine.ts'
-import { subagentDrivenDevelopment } from '../hooks/patches/subagent-driven-development.ts'
-import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
-import { boot, router } from './kit.ts'
+import { applyPatches } from '../../hooks/patches/engine'
+import { subagentDrivenDevelopment } from '../../hooks/patches/subagent-driven-development'
+import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { boot, router } from '../kit'
 
 const ABSENT = [
   'PLAN_FILE', 'scripts/', 'plan file', 'executing-plans', 'Rulings I made', 'task-brief', 'sdd-workspace', 'Rule and continue', 'presents the options',
@@ -48,12 +48,12 @@ const PRESENT = [
   'is complete even when the ledger has no line for it',
 ]
 const PARENT_PLAN_FIX = "or the parent's `## Plan` section when the mistake is there"
+const PLAN_FIX_ROUTES = ['principle', 'pre-start scan', 'BLOCKED', 'plan-mandated finding', 'breaker']
 const patched = () => applyPatches(SKILLS['subagent-driven-development'], subagentDrivenDevelopment)
 test('every subagent-driven-development patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))
 test('the patched subagent-driven-development keeps nothing the mod replaces', () => expect(ABSENT.filter(s => patched().text.includes(s))).toEqual([]))
 test("the patched subagent-driven-development says what the mod does instead", () => expect(PRESENT.filter(s => !patched().text.includes(s))).toEqual([]))
-// Principle, pre-start scan, BLOCKED, plan-mandated finding, breaker: each route that edits the plan.
-test("every plan-fix route can fix the parent's ## Plan section too", () => expect(patched().text.split(PARENT_PLAN_FIX).length - 1).toBe(5))
+test("every plan-fix route can fix the parent's ## Plan section too", () => expect(patched().text.split(PARENT_PLAN_FIX).length - 1).toBe(PLAN_FIX_ROUTES.length))
 test('subagent-driven-development reaches the model patched', async ($, on) => {
   await boot($, on, { reply: router({}) })
   const text = 'Base directory for this skill: /x\n\n' + SKILLS['subagent-driven-development'].replace(/^---\n[\s\S]*?\n---\n\n/, '')

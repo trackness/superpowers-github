@@ -1,9 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-import { boot, callTool, closingData, type ItemSpec, repoData, router, url, workData } from './kit.ts'
+import { boot, callTool, closingRefsData, type ItemSpec, repoData, router, url, workData } from '../kit'
 
 const HEADING = '## Plan changes made during the run'
 
-// The parent is #10 with tasks #11 and #12 unless `tasks` says otherwise.
 const world = (parent: ItemSpec, tasks: ItemSpec[], closing?: unknown) =>
   router({ graphql: { Repo: () => repoData({}), Work: () => workData({ issue: parent, tasks }), ClosingRefs: () => closing } })
 
@@ -26,7 +25,7 @@ test('the gate takes a task that is already Done', async ($, on) => {
 
 test('pr_check refuses a task given as the parent, and names the parent', async ($, on) => {
   const work = workData({ issue: { number: 11, status: 'In Review' }, parent: { number: 10, status: 'In Review' }, tasks: both('In Review', 'In Review') })
-  const closing = closingData({ body: HEADING, closes: [11, 12] })
+  const closing = closingRefsData({ body: HEADING, closes: [11, 12] })
   await boot($, on, { reply: router({ graphql: { Repo: () => repoData({}), Work: () => work, ClosingRefs: () => closing } }) })
   for (const pr of [undefined, 7]) {
     const r = await callTool($, 'pr_check', { parent: url(11), pr })
@@ -53,7 +52,7 @@ test('a small change is refused the gate before In Review', async ($, on) => {
 })
 
 test('a PR that closes exactly the parent and its tasks is ready to hand over', async ($, on) => {
-  const w = world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: `x\n${HEADING}\n\nNone.`, closes: [10, 11, 12] }))
+  const w = world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingRefsData({ body: `x\n${HEADING}\n\nNone.`, closes: [10, 11, 12] }))
   await boot($, on, { reply: w })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.text).toContain('hand it over')
@@ -61,7 +60,7 @@ test('a PR that closes exactly the parent and its tasks is ready to hand over', 
 })
 
 test('a PR URL names the PR to check', async ($, on) => {
-  const w = world({ number: 10, status: 'In Review' }, [], closingData({ body: 'x', closes: [10] }))
+  const w = world({ number: 10, status: 'In Review' }, [], closingRefsData({ body: 'x', closes: [10] }))
   await boot($, on, { reply: w })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 'https://github.com/trackness/demo/pull/9' })
   expect(r.text).toContain('PR #9 closes exactly')
@@ -69,30 +68,30 @@ test('a PR URL names the PR to check', async ($, on) => {
 })
 
 test('a PR missing a task names it', async ($, on) => {
-  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: HEADING, closes: [10, 11] })) })
+  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingRefsData({ body: HEADING, closes: [10, 11] })) })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.deny).toContain('Missing: #12')
   expect(r.deny).not.toContain('Extra:')
 })
 
 test('a PR closing an extra issue names it', async ($, on) => {
-  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: HEADING, closes: [10, 11, 12, 99] })) })
+  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingRefsData({ body: HEADING, closes: [10, 11, 12, 99] })) })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.deny).toContain('Extra: #99')
   expect(r.deny).not.toContain('Missing:')
 })
 
 test('a PR into a branch other than the default is refused: GitHub would close nothing', async ($, on) => {
-  const w = world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: HEADING, closes: [10, 11, 12], base: 'develop' }))
+  const w = world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingRefsData({ body: HEADING, closes: [10, 11, 12], base: 'develop' }))
   await boot($, on, { reply: w })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.deny).toContain('PR #7 targets develop, not the default branch main')
   expect(r.deny).toContain('`gh pr edit 7 --base main`')
-  expect(r.deny).toContain('tell James')
+  expect(r.deny).toContain('tell your human partner')
 })
 
 test('a PR for a planned run must carry the plan-changes section', async ($, on) => {
-  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: 'no heading', closes: [10, 11, 12] })) })
+  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingRefsData({ body: 'no heading', closes: [10, 11, 12] })) })
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.deny).toContain(HEADING)
 })

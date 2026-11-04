@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, commentsPage, type ItemSpec, type Reply, repoData, router, type Spawned, url, workData, type World } from './kit.ts'
+import { argvs, boot, callTool, commentsPage, type ItemSpec, type Reply, repoData, router, type Spawned, url, workData, type World } from '../kit'
 
 const [IDEAS, APP, SITE] = ['trackness/ideas', 'trackness/app', 'trackness/site']
 const OLD = url(5, IDEAS)
@@ -28,10 +28,7 @@ const nothingMoved = (w: World) => {
   expect(issueCalls(w, 'create')).toEqual([])
 }
 
-// The idea is #5 in Designed on the ideas board, with two pages of comments. A transfer answers app#3 (not on app's board); a create answers site#4.
-// `fail` names the gh verb (transfer, item-edit, comment…) that exits 1; `gh issue list` answers `list`; `comments` replaces the two pages with one.
-// `parent` and `own` give the idea a parent and sub-issues of its own. A download prints the path gh-image names from the URL
-// (an /assets/ one as <uuid>.png) and leaves `md` there in `files`, which a test hands to boot so the mod can read it.
+// A download names its file as gh-image does (an /assets/ URL as <uuid>.png) and stores `md` in `files`, which a test must hand to boot so the mod can read it.
 const world = (o: { idea?: Partial<ItemSpec>; parent?: ItemSpec; own?: ItemSpec[]; tasks?: ItemSpec[]; moved?: Partial<ItemSpec>; fail?: string; list?: Reply; comments?: string[]; md?: string } = {}) => {
   const files: Record<string, string> = {}
   const reply = router({
@@ -116,13 +113,12 @@ test('a move to a public repo recreates the issue with fresh attachments and no 
   const comments = issueCalls(w, 'comment')
   expect(comments.map(s => s.input)).toEqual(['first', `second ![s.png](${NEW_PNG})`])
   expect(comments.every(s => s.argv[3] === url(4, SITE))).toBe(true)
-  // no link back: nothing posted to the public repo names the ideas repo
-  expect([created[0]!, ...comments].some(s => s.input!.includes(IDEAS))).toBe(false)
+  const postedToPublic = [created[0]!, ...comments]
+  expect(postedToPublic.some(s => s.input!.includes(IDEAS))).toBe(false)
   const a = argvs(w)
   expect(a.some(x => /^gh image download --output-dir \/tmp\/superpowers-github\/\S+ https:\/\/github\.com\/user-attachments\/files\/1\/idea\.md$/.test(x))).toBe(true)
   // gh-image makes the download folder itself
   expect(a.some(x => x.startsWith('mkdir'))).toBe(false)
-  // gh-image's pin is checked before its first use, the download
   expect(a.indexOf('gh extension list')).toBeLessThan(a.findIndex(x => x.startsWith('gh image download')))
   expect(a.indexOf('gh extension list')).not.toBe(-1)
   expect(a).toContain(add(4, SITE))

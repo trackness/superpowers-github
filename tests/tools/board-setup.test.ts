@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
-import { STATUSES } from '../hooks/config.ts'
-import { OPTION_STYLE, workflowDiffs } from '../hooks/setup.ts'
-import { argvs, boot, callTool, DEMO, fieldsData, projectJson, type Reply, repoData, router, type Spawned, viewsData, workflowsData } from './kit.ts'
+import { STATUSES } from '../../hooks/config'
+import { OPTION_STYLE } from '../../hooks/github/setup'
+import { argvs, boot, callTool, DEMO, fieldsData, projectCreateOutput, type Reply, repoData, router, type Spawned, viewsData, workflowsData } from '../kit'
 
 // A fresh board from `gh project create` has all six workflows on.
 const FRESH = { 'Item closed': true, 'Auto-close issue': true, 'Item added to project': true, 'Pull request linked to issue': true, 'Pull request merged': true, 'Auto-add sub-issues to project': true }
@@ -12,17 +12,13 @@ const merge = (repo: string) => `gh repo edit ${repo} --enable-squash-merge --en
 const MERGE_DEFAULT = { squashMergeAllowed: true, mergeCommitAllowed: true, rebaseMergeAllowed: true, deleteBranchOnMerge: false, squashMergeCommitTitle: 'COMMIT_OR_PR_TITLE', squashMergeCommitMessage: 'COMMIT_MESSAGES' }
 const MERGE_SET = { squashMergeAllowed: true, mergeCommitAllowed: false, rebaseMergeAllowed: false, deleteBranchOnMerge: true, squashMergeCommitTitle: 'PR_TITLE', squashMergeCommitMessage: 'BLANK' }
 
-// `merged`: the repo has the merge settings `gh repo edit` sets.
-type BoardState = { options: string[]; workflows: Record<string, boolean>; views: string[]; merged: boolean }
-const fresh = (): BoardState => ({ options: ['Todo', 'In Progress', 'Done'], workflows: { ...FRESH }, views: ['TABLE_LAYOUT'], merged: false })
-const built = (workflows: Record<string, boolean> = KEPT): BoardState => ({ options: [...STATUSES], workflows: { ...workflows }, views: ['BOARD_LAYOUT'], merged: true })
+type BoardState = { options: string[]; workflows: Record<string, boolean>; views: string[]; mergeSettingsSet: boolean }
+const fresh = (): BoardState => ({ options: ['Todo', 'In Progress', 'Done'], workflows: { ...FRESH }, views: ['TABLE_LAYOUT'], mergeSettingsSet: false })
+const built = (workflows: Record<string, boolean> = KEPT): BoardState => ({ options: [...STATUSES], workflows: { ...workflows }, views: ['BOARD_LAYOUT'], mergeSettingsSet: true })
 
 const head = (s: Spawned, n: number) => s.argv.slice(0, n).join(' ')
 
-// Answers `Repo`, and the board's ops from `b`, which each mutation changes, so a later read sees what it left.
-// `gh project create` answers board `number` (default 7), and once `gh project link` succeeds `Repo` lists the
-// repo's own board (board 1, so pass `number: 1` for a test that calls again). Any other `gh project` or `gh repo`
-// call succeeds. `failOnce` names a command (its first three words) or a GraphQL op that fails the first time.
+// Once `gh project link` succeeds, `Repo` lists the repo's own board as board 1, so a test that calls again passes `number: 1`.
 function world(b: BoardState, o: { repo?: string; boards?: string[]; number?: number; afterDelete?: (b: BoardState) => void; failOnce?: string } = {}) {
   let [linked, failed] = [false, false]
   const r = router({
@@ -44,11 +40,11 @@ function world(b: BoardState, o: { repo?: string; boards?: string[]; number?: nu
         b.views.push(v.layout)
         return { createProjectV2View: { projectV2View: { id: 'V1' } } }
       },
-      Merge: () => ({ repository: b.merged ? MERGE_SET : MERGE_DEFAULT }),
+      Merge: () => ({ repository: b.mergeSettingsSet ? MERGE_SET : MERGE_DEFAULT }),
     },
     cli: s => {
-      if (head(s, 3) === 'gh project create') return projectJson(o.number ?? 7)
-      if (head(s, 3) === 'gh repo edit') b.merged = true
+      if (head(s, 3) === 'gh project create') return projectCreateOutput(o.number ?? 7)
+      if (head(s, 3) === 'gh repo edit') b.mergeSettingsSet = true
       return head(s, 2) === 'gh project' || head(s, 2) === 'gh repo' ? {} : undefined
     },
   })
@@ -78,7 +74,6 @@ test('board_setup builds a fresh board: option IDs kept, four workflows deleted,
   expect(r.seen.DeleteWorkflow?.map((v: any) => v.workflowId).sort()).toEqual(['wf-Auto-add sub-issues to project', 'wf-Item added to project', 'wf-Pull request linked to issue', 'wf-Pull request merged'])
   expect(r.seen.CreateView?.[0]).toMatchObject({ layout: 'BOARD_LAYOUT' })
   expect(argvs(w)).toContain('gh project link 7 --owner trackness --repo trackness/demo')
-  // Linked straight after the create, before anything else touches the board.
   const create = argvs(w).indexOf('gh project create --owner trackness --title demo --format json')
   expect(argvs(w).indexOf('gh project link 7 --owner trackness --repo trackness/demo')).toBe(create + 1)
   expect(argvs(w)).toContain(merge(DEMO))
@@ -121,25 +116,24 @@ test('board_setup reports a board that differs, and repairs it on request', asyn
   expect(argvs(w)).not.toContain(merge(DEMO))
   const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
   expect(r.seen.DeleteWorkflow).toContainEqual({ workflowId: 'wf-Pull request merged' })
-  // Repair also checks for a board view (this board has one) and sets the merge settings; each check reads the views too.
+  // Views is read by the first check, by repair's ensureBoardView and by the check after repair.
   expect(r.seen.Views).toHaveLength(3)
   expect(r.seen.CreateView).toBeUndefined()
   expect(argvs(w)).toContain(merge(DEMO))
   expect(again.text).toContain('is set up')
 })
 
-test('board_setup reports wrong Status options, and repair resets them keeping their IDs only once James agrees to drop the others', async ($, on) => {
+test('board_setup reports wrong Status options, and repair resets them keeping their IDs only once the user agrees to drop the others', async ($, on) => {
   const r = world({ ...built(), options: ['Backlog', 'Todo', 'In Progress', 'Done'] })
   await boot($, on, { reply: r })
   const first = await callTool($, 'board_setup', { repo: DEMO })
   expect(first.deny).toContain('Status options: Backlog, Todo, In Progress, Done')
   expect(first.deny).toContain('repair: true')
-  expect(first.deny).toContain('Ask James before repairing: repair removes these options, and their items lose their Status: Backlog. Only once he agrees, add dropOptions: true.')
+  expect(first.deny).toContain('Ask your human partner before repairing: repair removes these options, and their items lose their Status: Backlog. Only once they agree, add dropOptions: true.')
   expect(r.seen.SetOptions).toBeUndefined()
-  // A repair without the opt-in removes nothing, even when called directly.
   const refused = await callTool($, 'board_setup', { repo: DEMO, repair: true })
   expect(refused.deny).toContain('Repair removes these Status options, and their items lose their Status: Backlog.')
-  expect(refused.deny).toContain('Ask James first; only once he agrees, call board_setup again with repair: true and dropOptions: true.')
+  expect(refused.deny).toContain('Ask your human partner first; only once they agree, call board_setup again with repair: true and dropOptions: true.')
   expect(r.seen.SetOptions).toBeUndefined()
   const again = await callTool($, 'board_setup', { repo: DEMO, repair: true, dropOptions: true })
   expect(r.seen.SetOptions?.[0].options.map((o: any) => o.id)).toEqual([undefined, undefined, 'id-Todo', 'id-In Progress', undefined, 'id-Done'])
@@ -160,7 +154,7 @@ test('board_setup repair refuses a Status field with no Done, so "Item closed" k
 })
 
 test('board_setup reports a board with no board view and wrong merge settings, and repair fixes both', async ($, on) => {
-  const r = world({ ...built(), views: ['TABLE_LAYOUT'], merged: false })
+  const r = world({ ...built(), views: ['TABLE_LAYOUT'], mergeSettingsSet: false })
   const w = await boot($, on, { reply: r })
   const first = await callTool($, 'board_setup', { repo: DEMO })
   expect(first.deny).toContain('- board view: none, must have one')
@@ -256,14 +250,4 @@ test('board_setup finishes a half-built board when called again with repair', as
   expect(r.seen.SetOptions).toHaveLength(1)
   expect(r.seen.CreateView?.[0]).toMatchObject({ layout: 'BOARD_LAYOUT' })
   expect(argvs(w)).toContain(merge(DEMO))
-})
-
-test('workflowDiffs: must-be-on missing or off, must-be-off on; a must-be-off one deleted or disabled is fine', () => {
-  const wf = (name: string, enabled: boolean) => ({ id: `wf-${name}`, name, enabled })
-  expect(workflowDiffs([wf('Item closed', true), wf('Auto-close issue', true), wf('Pull request merged', false)])).toEqual([])
-  expect(workflowDiffs([wf('Item closed', false), wf('Item added to project', true), wf('Pull request merged', false)])).toEqual([
-    'Item closed: off, must be on',
-    'Auto-close issue: missing, must be on',
-    'Item added to project: on, must be off',
-  ])
 })

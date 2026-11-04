@@ -1,9 +1,9 @@
-import { assertWritable, created, createIssue, failedAfter, link, NOT_DONE, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
-import { attachmentUrls, checkBody } from '../body.ts'
-import { IDEAS_REPO, TMP_ROOT, TOOL_PREFIX } from '../config.ts'
-import { gh, graphqlPages, parseIssue, ToolError } from '../gh.ts'
-import { download, parseRefs, upload } from '../image.ts'
-import { str, type Tool } from '../tools.ts'
+import { IDEAS_REPO, TMP_ROOT, TOOL_PREFIX } from '../config'
+import { assertWritable, created, createIssue, failedAfter, link, NOT_DONE, readWork, repoInfo, requireBoard, setStatus, type Work } from '../github/board'
+import { attachmentUrls, checkBody } from '../github/body'
+import { gh, graphqlPages, ModelFacingError, parseIssue } from '../github/gh'
+import { download, parseRefs, upload } from '../github/image'
+import { str, type Tool } from './engine'
 
 const COMMENTS = `query Comments($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
@@ -16,15 +16,14 @@ const COMMENTS = `query Comments($owner: String!, $name: String!, $number: Int!,
   }
 }`
 
-// The issue's links to other issues: its parent, its own sub-issues and its dependencies.
-const links = (w: Work): string[] => [
+const issueLinks = (w: Work): string[] => [
   ...(w.parent ? [`parent #${w.parent.number}`] : []),
-  ...w.own.map(t => `sub-issue #${t.number}`),
+  ...w.ownSubIssues.map(t => `sub-issue #${t.number}`),
   ...w.issue.blockedBy.map(n => `blocked by #${n}`),
   ...w.issue.blocking.map(n => `blocking #${n}`),
 ]
 
-const kept = (w: Work) => [...attachmentUrls(w.issue.body).map(u => `attachment ${u}`), ...links(w)]
+const kept = (w: Work) => [...attachmentUrls(w.issue.body).map(u => `attachment ${u}`), ...issueLinks(w)]
 
 export const ideaMoveTool: Tool = {
   spec: {
@@ -42,12 +41,12 @@ export const ideaMoveTool: Tool = {
   async run(io, input, call) {
     const ref = parseIssue(str(input, 'issue'))
     const to = str(input, 'to')
-    if (ref.repo.toLowerCase() !== IDEAS_REPO) throw new ToolError(`idea_move moves ideas out of ${IDEAS_REPO} only; ${ref.url} is in ${ref.repo}.`)
+    if (ref.repo.toLowerCase() !== IDEAS_REPO) throw new ModelFacingError(`idea_move moves ideas out of ${IDEAS_REPO} only; ${ref.url} is in ${ref.repo}.`)
     const work = await readWork(io, ref.url)
     assertWritable(work.repo) // the move writes to the ideas repo: the transfer, or the closing comment
     const { issue } = work
-    if (issue.closed) throw new ToolError(`${link(issue)} is closed: only an open idea is moved.`)
-    if (issue.status === 'Done') throw new ToolError(`${link(issue)} is in Done: a move keeps the column, and ${NOT_DONE}. Nothing was moved.`)
+    if (issue.closed) throw new ModelFacingError(`${link(issue)} is closed: only an open idea is moved.`)
+    if (issue.status === 'Done') throw new ModelFacingError(`${link(issue)} is in Done: a move keeps the column, and ${NOT_DONE}. Nothing was moved.`)
     const dest = await repoInfo(io, to)
     const board = requireBoard(dest)
     const status = issue.status ?? 'Idea' // an issue in the ideas repo with no Status on its board is still an idea
@@ -68,8 +67,8 @@ export const ideaMoveTool: Tool = {
       return [`Transferred ${issue.url} to ${link(moved.issue)}, in ${status} on board "${board.title}".`, ...lost].join('\n')
     }
 
-    const linked = links(work)
-    if (linked.length) throw new ToolError(`${link(issue)} has links a public repo can't recreate (${linked.join(', ')}): remove them first, or move it to a private repo.`)
+    const linked = issueLinks(work)
+    if (linked.length) throw new ModelFacingError(`${link(issue)} has links a public repo can't recreate (${linked.join(', ')}): remove them first, or move it to a private repo.`)
     const comments = (await graphqlPages<{ body: string }>(io, 'Comments', COMMENTS, { owner: ref.owner, name: ref.name, number: ref.number }, d => d.repository.issue.comments)).map(c => c.body)
     const texts = [issue.body, ...comments]
     const sized = (ts: string[]) => ts.forEach((t, i) => checkBody(t, i ? `comment ${i} of ${ts.length - 1}` : 'body'))
@@ -77,7 +76,7 @@ export const ideaMoveTool: Tool = {
     const refs = [...new Map(texts.flatMap(t => parseRefs(t)).map(r => [r.url, r])).values()]
     // Old attachment URLs are never referenced from the public repo; one left once every [name](url) link is taken out can't be uploaded again.
     const left = attachmentUrls(texts.map(t => refs.reduce((s, r) => s.replaceAll(r.url, ''), t)).join('\n'))
-    if (left.length) throw new ToolError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they can't be uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
+    if (left.length) throw new ModelFacingError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they can't be uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
     // Everything is downloaded first: a .md attachment (idea.md) can link the others, and is checked before anything is uploaded.
     const files: string[] = []
     for (const [i, r] of refs.entries()) files.push(await download(io, r, `${TMP_ROOT}/${call.tool_use_id}/${i}`))
@@ -88,7 +87,7 @@ export const ideaMoveTool: Tool = {
       if (!file.endsWith('.md')) continue
       const text = await io.fs.read(file)
       const unknown = attachmentUrls(text).filter(u => !known.includes(u))
-      if (unknown.length) throw new ToolError(`${refs[i]!.markdown} links attachments that no [name](url) link in ${link(issue)} or its comments names, so their new copies can't be swapped in: ${unknown.join(', ')}. Link each one in the issue's ## Attachments list with ${TOOL_PREFIX}issue_edit, then call idea_move again. Nothing was uploaded.`)
+      if (unknown.length) throw new ModelFacingError(`${refs[i]!.markdown} links attachments that no [name](url) link in ${link(issue)} or its comments names, so their new copies can't be swapped in: ${unknown.join(', ')}. Link each one in the issue's ## Attachments list with ${TOOL_PREFIX}issue_edit, then call idea_move again. Nothing was uploaded.`)
       docs.set(i, text)
     }
     const fresh = new Map<string, string>()
@@ -97,7 +96,7 @@ export const ideaMoveTool: Tool = {
     let url: string, body: string, copies: string[]
     try {
       for (const i of refs.keys()) if (!docs.has(i)) await put(i)
-      // Each .md goes up last, with its links swapped like the body's.
+      // Last, so swap knows every other attachment's new URL.
       for (const [i, text] of docs) {
         await io.fs.write(files[i]!, swap(text))
         await put(i)
@@ -108,9 +107,9 @@ export const ideaMoveTool: Tool = {
       url = await createIssue(io, dest.repo, issue.title, body)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      // An error that starts "created <url>" names the issue the uploads are linked from.
-      if (!fresh.size || message.startsWith('created ')) throw err
-      throw new ToolError(`${message} Already uploaded to ${dest.repo}, linked from nowhere: ${[...fresh.values()].join(', ')}`)
+      const createdIssueLinksUploads = message.startsWith('created ')
+      if (!fresh.size || createdIssueLinksUploads) throw err
+      throw new ModelFacingError(`${message} Already uploaded to ${dest.repo}, linked from nowhere: ${[...fresh.values()].join(', ')}`)
     }
     let step = 'reading the new issue\'s URL'
     try {

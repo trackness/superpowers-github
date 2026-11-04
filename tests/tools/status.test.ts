@@ -1,15 +1,13 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, type ItemSpec, repoData, router, url, workData, type World } from './kit.ts'
+import { argvs, boot, callTool, type ItemSpec, repoData, router, url, workData, type World } from '../kit'
 
 const edit = (n: number, s: string, board = 1) => `gh project item-edit ${board} --owner trackness --url ${url(n)} --field Status --value ${s}`
 const add = (n: number, board = 1) => `gh project item-add ${board} --owner trackness --url ${url(n)}`
 const projectCalls = (w: World) => argvs(w).filter(a => a.startsWith('gh project'))
 
-// Answers `Repo` and `Work` (a function answers each read in turn); every `gh project` call answers `{}`.
 const world = (work: unknown, repo = repoData({})) =>
   router({ graphql: { Repo: () => repo, Work: typeof work === 'function' ? () => work() : () => work }, cli: s => (s.argv[1] === 'project' ? {} : undefined) })
 
-// #11 as a task of #10, beside #12.
 const task11 = (parent: ItemSpec, tasks: ItemSpec[]) => workData({ issue: tasks.find(t => t.number === 11)!, parent, tasks })
 
 test('the board is the one titled exactly the repo name', async ($, on) => {

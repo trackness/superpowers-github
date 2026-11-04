@@ -1,7 +1,7 @@
-import { assertWritable, issueBody, repoInfo } from '../board.ts'
-import { attachmentUrls, checkBody } from '../body.ts'
-import { gh, parseIssue, ToolError } from '../gh.ts'
-import { nums, optStr, str, type Tool } from '../tools.ts'
+import { assertWritable, issueBody, repoInfo } from '../github/board'
+import { attachmentUrls, checkBody } from '../github/body'
+import { gh, ModelFacingError, parseIssue } from '../github/gh'
+import { nums, optStr, str, type Tool } from './engine'
 
 export const issueEditTool: Tool = {
   spec: {
@@ -23,8 +23,8 @@ export const issueEditTool: Tool = {
   async run(io, input) {
     const ref = parseIssue(str(input, 'issue'))
     const [given, append, title, add, remove] = [optStr(input, 'body'), optStr(input, 'appendBody'), optStr(input, 'title'), nums(input, 'addBlockedBy'), nums(input, 'removeBlockedBy')]
-    if (given === undefined && append === undefined && title === undefined && !add.length && !remove.length) throw new ToolError('Nothing to change: give a body, appendBody, a title, addBlockedBy or removeBlockedBy.')
-    if (given !== undefined && append !== undefined) throw new ToolError('Give body or appendBody, not both.')
+    if (given === undefined && append === undefined && title === undefined && !add.length && !remove.length) throw new ModelFacingError('Nothing to change: give a body, appendBody, a title, addBlockedBy or removeBlockedBy.')
+    if (given !== undefined && append !== undefined) throw new ModelFacingError('Give body or appendBody, not both.')
     let body = given
     if (append !== undefined) {
       assertWritable(await repoInfo(io, ref.repo))
@@ -35,7 +35,7 @@ export const issueEditTool: Tool = {
       checkBody(given)
       assertWritable(await repoInfo(io, ref.repo))
       const dropped = attachmentUrls(await issueBody(io, ref.url)).filter(u => !given.includes(u))
-      if (dropped.length) throw new ToolError(`the new body drops these attachments, which can't be re-referenced once dropped: ${dropped.join(', ')}. Keep them in the ## Attachments list.`)
+      if (dropped.length) throw new ModelFacingError(`the new body drops these attachments, which can't be re-referenced once dropped: ${dropped.join(', ')}. Keep them in the ## Attachments list.`)
     }
     const args = ['issue', 'edit', ref.url]
     if (title !== undefined) args.push('--title', title)

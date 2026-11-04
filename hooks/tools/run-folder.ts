@@ -1,18 +1,17 @@
-import { currentRepo } from '../board.ts'
-import { git, type Io, parseIssue, runOk, ToolError } from '../gh.ts'
-import { str, type Tool } from '../tools.ts'
+import { currentRepo } from '../github/board'
+import { git, type Io, ModelFacingError, parseIssue, runOk } from '../github/gh'
+import { str, type Tool } from './engine'
 
 export const PARENT = {
   type: 'string',
   description: "The parent issue: its URL (https://github.com/<owner>/<repo>/issues/<number>) or <owner>/<repo>#<number>.",
 }
 
-// The run folder superpowers' sdd-workspace makes, keyed by the parent issue's number instead of the plan file.
 export async function runFolder(io: Io, parentUrl: string): Promise<string> {
   const { number, repo, url } = parseIssue(parentUrl)
   // The folder is keyed by number alone, so in another repo's checkout it would be that repo's own #<number>. Unknown (gh can't tell) passes.
   const here = await currentRepo(io)
-  if (here && here.toLowerCase() !== repo.toLowerCase()) throw new ToolError(`The parent ${url} is in ${repo}, but this checkout is ${here}: its run folder and commits would land in ${here}. Work from a checkout of ${repo}.`)
+  if (here && here.toLowerCase() !== repo.toLowerCase()) throw new ModelFacingError(`The parent ${url} is in ${repo}, but this checkout is ${here}: its run folder and commits would land in ${here}. Work from a checkout of ${repo}.`)
   const root = (await git(io, ['rev-parse', '--show-toplevel'])).replace(/\n$/, '')
   const sdd = `${root}/.superpowers/sdd`
   const dir = `${sdd}/${number}`

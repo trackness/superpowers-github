@@ -1,7 +1,7 @@
-import { closedNotDone, line, link, NOT_DONE, readWork, recomputeParent, setStatus } from '../board.ts'
-import { STATUSES, type Status } from '../config.ts'
-import { ToolError } from '../gh.ts'
-import { optStr, str, type Tool } from '../tools.ts'
+import { STATUSES, type Status } from '../config'
+import { closedNotDone, link, linkWithColumn, NOT_DONE, readWork, recomputeParent, setStatus } from '../github/board'
+import { ModelFacingError } from '../github/gh'
+import { optStr, str, type Tool } from './engine'
 
 export const statusTool: Tool = {
   spec: {
@@ -19,12 +19,12 @@ export const statusTool: Tool = {
   async run(io, input) {
     const issue = str(input, 'issue')
     const status = optStr(input, 'status') as Status | undefined
-    if (status !== undefined && !STATUSES.includes(status)) throw new ToolError(`status must be one of: ${STATUSES.join(', ')}`)
-    if (status === 'Done') throw new ToolError(NOT_DONE)
+    if (status !== undefined && !STATUSES.includes(status)) throw new ModelFacingError(`status must be one of: ${STATUSES.join(', ')}`)
+    if (status === 'Done') throw new ModelFacingError(NOT_DONE)
     const work = await readWork(io, issue)
-    if (!status) return [work.parent ?? work.issue, ...work.tasks].map(line).concat(closedNotDone(work)).join('\n')
-    if (!work.parent && work.tasks.length) throw new ToolError(`${link(work.issue)} has tasks, so its column is derived from its tasks: move a task instead.`)
-    if (work.parent && (status === 'Idea' || status === 'Designed')) throw new ToolError(`${link(work.issue)} is a task, and a task is never in Idea or Designed: move it to Todo, In Progress or In Review.`)
+    if (!status) return [work.parent ?? work.issue, ...work.tasks].map(linkWithColumn).concat(closedNotDone(work)).join('\n')
+    if (!work.parent && work.tasks.length) throw new ModelFacingError(`${link(work.issue)} has tasks, so its column is derived from its tasks: move a task instead.`)
+    if (work.parent && (status === 'Idea' || status === 'Designed')) throw new ModelFacingError(`${link(work.issue)} is a task, and a task is never in Idea or Designed: move it to Todo, In Progress or In Review.`)
     await setStatus(io, work.board, work.issue, status)
     // Read again after the write, so a sibling task another session moved meanwhile counts too.
     const parent = work.parent && (await recomputeParent(io, await readWork(io, issue), { number: work.issue.number, status }))

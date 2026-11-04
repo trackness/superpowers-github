@@ -1,19 +1,19 @@
-import { assertWritable, failedAfter, issueBody, link, readWork, setStatus } from '../board.ts'
-import { attachmentUrls, checkBody } from '../body.ts'
-import { TMP_ROOT, TOOL_PREFIX } from '../config.ts'
-import { gh, parseIssue, ToolError } from '../gh.ts'
-import { parseRefs, splitAttachments, upload } from '../image.ts'
-import { str, type Tool } from '../tools.ts'
+import { ATTACHMENT_LINE_ROOM, TMP_ROOT, TOOL_PREFIX } from '../config'
+import { assertWritable, failedAfter, issueBody, link, readWork, setStatus } from '../github/board'
+import { attachmentUrls, checkBody } from '../github/body'
+import { gh, ModelFacingError, parseIssue } from '../github/gh'
+import { parseRefs, splitAttachments, upload } from '../github/image'
+import { str, type Tool } from './engine'
 
 const items = (refs: string[]) => refs.map(r => `- ${r}\n`).join('')
 
-// The idea, and the list the new body keeps: the old list plus every link in the idea's own text, so no attachment is left only inside idea.md.
-function parts(body: string, design: string): { idea: string; refs: string[] } {
+// Every link in the idea's own text joins the list, so no attachment is left only inside idea.md.
+function ideaAndKeptRefs(body: string, design: string): { idea: string; refs: string[] } {
   const { text: idea, refs } = splitAttachments(body)
   for (const r of parseRefs(idea)) if (!refs.some(x => x.includes(r.url))) refs.push(r.markdown)
   // As issue_edit refuses: an attachment dropped from the body can't be referenced again.
   const dropped = attachmentUrls(body).filter(u => !design.includes(u) && !refs.some(x => x.includes(u)))
-  if (dropped.length) throw new ToolError(`The idea references these attachments other than as [name](url) links, so the new body would drop them: ${dropped.join(', ')}. Make each one a link with ${TOOL_PREFIX}issue_edit, then call design_write again.`)
+  if (dropped.length) throw new ModelFacingError(`The idea references these attachments other than as [name](url) links, so the new body would drop them: ${dropped.join(', ')}. Make each one a link with ${TOOL_PREFIX}issue_edit, then call design_write again.`)
   return { idea, refs }
 }
 
@@ -38,11 +38,12 @@ export const designWriteTool: Tool = {
     const { issue } = work
     if (issue.status !== 'Idea' || work.tasks.length) {
       const why = issue.status !== 'Idea' ? `is in ${issue.status ?? 'no status'}, not Idea` : 'already has tasks'
-      throw new ToolError(`#${issue.number} ${why}: revise a design with ${TOOL_PREFIX}issue_edit`)
+      throw new ModelFacingError(`#${issue.number} ${why}: revise a design with ${TOOL_PREFIX}issue_edit`)
     }
-    const { idea, refs } = parts(issue.body, design)
-    // The heading only with a list, and the idea.md line (about 200 characters) only with an idea.
-    checkBody(idea || refs.length ? `${design}\n\n## Attachments\n\n${items(refs)}${idea ? ' '.repeat(200) : ''}` : design)
+    const { idea, refs } = ideaAndKeptRefs(issue.body, design)
+    const hasList = idea !== '' || refs.length > 0
+    const ideaMdRoom = idea ? ' '.repeat(ATTACHMENT_LINE_ROOM) : ''
+    checkBody(hasList ? `${design}\n\n## Attachments\n\n${items(refs)}${ideaMdRoom}` : design)
     let uploaded = ''
     if (idea) {
       const file = `${TMP_ROOT}/${call.tool_use_id}/idea.md`
@@ -53,15 +54,15 @@ export const designWriteTool: Tool = {
       let list = refs
       if (uploaded) {
         // Read again: another write may have landed during the upload.
-        const now = parts(await issueBody(io, ref.url), design)
-        if (now.idea !== idea) throw new ToolError(`#${issue.number}'s idea changed during the upload, so idea.md would not hold it: call design_write again.`)
+        const now = ideaAndKeptRefs(await issueBody(io, ref.url), design)
+        if (now.idea !== idea) throw new ModelFacingError(`#${issue.number}'s idea changed during the upload, so idea.md would not hold it: call design_write again.`)
         list = [...now.refs, uploaded]
       }
       const body = list.length ? `${design}\n\n## Attachments\n\n${items(list)}` : design
       checkBody(body)
       await gh(io, ['issue', 'edit', ref.url, '--body-file', '-'], { input: body })
     } catch (e) {
-      throw new ToolError(`${(e as Error).message} The issue body is unchanged.${uploaded && ` idea.md was already uploaded, and is not in it: ${uploaded}`}`)
+      throw new ModelFacingError(`${(e as Error).message} The issue body is unchanged.${uploaded && ` idea.md was already uploaded, and is not in it: ${uploaded}`}`)
     }
     try {
       await setStatus(io, work.board, issue, 'Designed')

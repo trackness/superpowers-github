@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { issueEditTool } from '../hooks/tools/issue-edit.ts'
-import { argvs, boot, callTool, repoData, router, url } from './kit.ts'
+import { issueEditTool } from '../../hooks/tools/issue-edit'
+import { argvs, boot, callTool, repoData, router, url } from '../kit'
 
 const FILES = 'https://github.com/user-attachments/files/1/idea.md'
 const ZIP = 'https://github.com/user-attachments/files/2/z.zip'

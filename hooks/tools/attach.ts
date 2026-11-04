@@ -1,9 +1,9 @@
-import { assertWritable, issueBody, repoInfo } from '../board.ts'
-import { checkBody } from '../body.ts'
-import { TMP_ROOT } from '../config.ts'
-import { gh, parseIssue, runOk, ToolError } from '../gh.ts'
-import { upload, withAttachment } from '../image.ts'
-import { optStr, str, type Tool } from '../tools.ts'
+import { ATTACHMENT_LINE_ROOM, TMP_ROOT } from '../config'
+import { assertWritable, issueBody, repoInfo } from '../github/board'
+import { checkBody } from '../github/body'
+import { gh, ModelFacingError, parseIssue, runOk } from '../github/gh'
+import { upload, withAttachment } from '../github/image'
+import { optStr, str, type Tool } from './engine'
 
 export const attachTool: Tool = {
   spec: {
@@ -23,8 +23,8 @@ export const attachTool: Tool = {
     const ref = parseIssue(str(input, 'issue'))
     const [path, name] = [str(input, 'path'), optStr(input, 'name')]
     assertWritable(await repoInfo(io, ref.repo))
-    // An upload can't be undone, so the body must have room for its line (about 200 characters) first.
-    checkBody(withAttachment(await issueBody(io, ref.url), { name: '', url: '', markdown: ' '.repeat(200) }))
+    // An upload can't be undone, so the body must have room for its line first.
+    checkBody(withAttachment(await issueBody(io, ref.url), { name: '', url: '', markdown: ' '.repeat(ATTACHMENT_LINE_ROOM) }))
     let file = path
     if ((await io.fs.stat(path)).kind === 'dir') {
       const dir = `${TMP_ROOT}/${call.tool_use_id}`
@@ -41,7 +41,7 @@ export const attachTool: Tool = {
       checkBody(body)
       await gh(io, ['issue', 'edit', ref.url, '--body-file', '-'], { input: body })
     } catch (e) {
-      throw new ToolError(`${(e as Error).message} The file was already uploaded, and is not attached: ${uploaded.markdown}`)
+      throw new ModelFacingError(`${(e as Error).message} The file was already uploaded, and is not attached: ${uploaded.markdown}`)
     }
     return `Attached ${uploaded.markdown} to ${ref.url}.`
   },

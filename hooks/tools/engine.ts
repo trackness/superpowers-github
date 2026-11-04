@@ -1,6 +1,6 @@
 import type { On, ToolSpec } from 'claude-code'
-import { PLUGIN, TOOL_PREFIX } from './config.ts'
-import { type Io, ToolError } from './gh.ts'
+import { PLUGIN, TOOL_PREFIX } from '../config'
+import { type Io, ModelFacingError } from '../github/gh'
 
 export type Tool = {
   spec: ToolSpec
@@ -9,7 +9,7 @@ export type Tool = {
 
 export function str(input: Record<string, unknown>, key: string): string {
   const value = input[key]
-  if (typeof value !== 'string') throw new ToolError(`${key} must be a string`)
+  if (typeof value !== 'string') throw new ModelFacingError(`${key} must be a string`)
   return value
 }
 
@@ -20,14 +20,14 @@ export function optStr(input: Record<string, unknown>, key: string): string | un
 export function nums(input: Record<string, unknown>, key: string): number[] {
   const value = input[key]
   if (value == null) return []
-  if (!Array.isArray(value) || !value.every(n => Number.isInteger(n))) throw new ToolError(`${key} must be a list of whole numbers`)
+  if (!Array.isArray(value) || !value.every(n => Number.isInteger(n))) throw new ModelFacingError(`${key} must be a list of whole numbers`)
   return value
 }
 
 export function bool(input: Record<string, unknown>, key: string): boolean {
   const value = input[key]
   if (value == null) return false
-  if (typeof value !== 'boolean') throw new ToolError(`${key} must be true or false`)
+  if (typeof value !== 'boolean') throw new ModelFacingError(`${key} must be true or false`)
   return value
 }
 
@@ -37,12 +37,12 @@ export function registerTools(on: On, tools: Tool[]): void {
     return next(e)
   })
   // With no settings rule the engine asks for every call of a mod's tool, so the mod vouches for its own.
-  // Only core's own ruleless ask is answered: a rule's deny or ask, an org ceiling, another mod's ask and plan mode stand.
   // The engine holds plan mode only on a real call's path, and this mod's calls answer in place, so the hook must keep it.
   // shortcut: plan mode shows only in core's reason ("Cannot call <tool> while in plan mode.", 2.1.318); test a mode field if tool.check gains one.
   on('tool.check', { tool: tools.map(t => `${TOOL_PREFIX}${t.spec.name}`) }, async (_, e, next) => {
     const verdict = await next(e)
-    if (verdict.decision !== 'ask' || verdict.rule !== undefined || verdict.ceiling !== undefined || verdict.plugin !== undefined || /plan mode/i.test(verdict.reason ?? '')) return verdict
+    const coreDefaultAsk = verdict.decision === 'ask' && verdict.rule === undefined && verdict.ceiling === undefined && verdict.plugin === undefined && !/plan mode/i.test(verdict.reason ?? '')
+    if (!coreDefaultAsk) return verdict
     return { decision: 'allow', reason: `${PLUGIN} vouches for its own tool` }
   })
   for (const t of tools) {
@@ -55,7 +55,7 @@ export function registerTools(on: On, tools: Tool[]): void {
         if (verdict.decision === 'deny') return { deny: verdict.reason ?? `${tool} is denied.` }
         if (verdict.decision === 'ask') {
           const question = `${verdict.reason ?? ''} Run ${tool} with ${JSON.stringify(input).slice(0, 500)}?`.trim()
-          if ((await $.ui.ask(question, ['Yes', 'No'])) !== 'Yes') return { deny: `James did not allow ${tool}.` }
+          if ((await $.ui.ask(question, ['Yes', 'No'])) !== 'Yes') return { deny: `Your human partner did not allow ${tool}.` }
         }
       } catch (err) {
         return { deny: `${PLUGIN} ${name} did not run: its permission check failed: ${err instanceof Error ? err.message : String(err)}` }
@@ -73,7 +73,7 @@ export function registerTools(on: On, tools: Tool[]): void {
         return { result: await t.run(io, e, { tool_use_id }) }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return { deny: err instanceof ToolError ? message : `${PLUGIN} ${name} failed: ${message}` }
+        return { deny: err instanceof ModelFacingError ? message : `${PLUGIN} ${name} failed: ${message}` }
       }
     })
   }

@@ -1,12 +1,11 @@
-import { git, type Io, run, ToolError } from '../gh.ts'
-import { str, type Tool } from '../tools.ts'
-import { PARENT, runFolder } from './run-folder.ts'
+import { git, type Io, ModelFacingError, run } from '../github/gh'
+import { str, type Tool } from './engine'
+import { PARENT, runFolder } from './run-folder'
 
-// The full SHA of the commit a ref names, or a refusal naming the end of the range it was given for.
-async function commitOf(io: Io, ref: string, end: 'BASE' | 'HEAD'): Promise<string> {
+async function fullCommitSha(io: Io, ref: string, end: 'BASE' | 'HEAD'): Promise<string> {
   const r = await run(io, ['git', 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
   const sha = r.stdout.trim()
-  if (r.code !== 0 || !sha) throw new ToolError(`bad ${end}: ${ref}`)
+  if (r.code !== 0 || !sha) throw new ModelFacingError(`bad ${end}: ${ref}`)
   return sha
 }
 
@@ -27,14 +26,14 @@ export const reviewPackageTool: Tool = {
   async run(io, input) {
     const [parent, base, head] = [str(input, 'parent'), str(input, 'base'), str(input, 'head')]
     const dir = await runFolder(io, parent)
-    const from = await commitOf(io, base, 'BASE')
-    const to = await commitOf(io, head, 'HEAD')
+    const from = await fullCommitSha(io, base, 'BASE')
+    const to = await fullCommitSha(io, head, 'HEAD')
     const named = `${base}..${head}`
     const range = `${from}..${to}`
     // The same two range checks as the native script: a wrong-branch HEAD gives a range not rooted at BASE, or an empty one.
-    if ((await run(io, ['git', 'merge-base', '--is-ancestor', from, to])).code !== 0) throw new ToolError(`HEAD is not a descendant of BASE: ${named}`)
+    if ((await run(io, ['git', 'merge-base', '--is-ancestor', from, to])).code !== 0) throw new ModelFacingError(`HEAD is not a descendant of BASE: ${named}`)
     const count = Number(await git(io, ['rev-list', '--count', range]))
-    if (!(count > 0)) throw new ToolError(`empty commit range: ${named}`)
+    if (!(count > 0)) throw new ModelFacingError(`empty commit range: ${named}`)
     const log = await git(io, ['log', '--oneline', range])
     const stat = await git(io, ['diff', '--stat', range])
     const diff = await git(io, ['diff', '-U10', range])

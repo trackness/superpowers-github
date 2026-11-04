@@ -1,26 +1,23 @@
-import { IDEAS_REPO, type Status, TOOL_PREFIX } from './config.ts'
-import { gh, graphql, type Io, parseIssue, run, ToolError } from './gh.ts'
+import { IDEAS_REPO, type Status, TOOL_PREFIX } from '../config'
+import { gh, graphql, type Io, ModelFacingError, parseIssue, run } from './gh'
 
 export type Board = { owner: string; number: number; title: string; url: string }
 export type RepoInfo = { repo: string; isPrivate: boolean; board?: Board }
-// `archived`: the card's item ID when its card on the board is archived.
-export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archived?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
-// `tasks`: the parent's sub-issues when the issue has a parent, else its own; `own`: always the issue's own.
-export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[]; own: Item[] }
+export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archivedItemId?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
+// `tasks`: the parent's sub-issues when the issue has a parent, else its own.
+export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[]; ownSubIssues: Item[] }
 
 export const NOT_DONE = `only GitHub's "Item closed" workflow moves an issue to Done, when the issue is closed`
 
 export const link = (i: { number: number; title: string; url: string }) => `[#${i.number} ${i.title}](${i.url})`
 
-// An issue and its column, as status and pr_check list them.
-export const line = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status' : 'not on the board')}`
+export const linkWithColumn = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status' : 'not on the board')}`
 
-// Not on the board yet: setStatus adds it by the board's number (`gh issue create --project` picks a board by title, ignoring case, among every board James can see).
+// setStatus puts it on the board by number: `gh issue create --project` picks a board by title, ignoring case, among every board the user can see.
 export const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: false, blockedBy: [], blocking: [] })
 
-// A step that fails after a write that must not happen twice: name the write and the step, so nothing is written again.
 export const failedAfter = (done: string, step: string, err: unknown, again = 'create the issue') =>
-  new ToolError(`${done}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't ${again} again.`)
+  new ModelFacingError(`${done}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't ${again} again.`)
 
 // `gh issue create` creates the issue, then applies --parent and --blocked-by, and exits non-zero without
 // printing the URL when one of those fails: so a failed create looks for the issue it may have made.
@@ -34,7 +31,7 @@ export async function createIssue(io: Io, repo: string, title: string, body: str
       .then(out => (JSON.parse(out) as { title: string; body: string; url: string; createdAt: string }[]).find(i => i.title === title && i.body.trim() === body.trim() && Date.parse(i.createdAt) >= since))
       .catch(() => undefined)
     if (made) throw failedAfter(`created ${made.url}`, links.length ? "gh's own --parent/--blocked-by step" : 'gh', err)
-    throw new ToolError(`${err instanceof Error ? err.message : err}. gh creates the issue before applying --parent and --blocked-by, so it may already exist: check \`gh issue list -R ${repo} --author @me\` before calling again.`)
+    throw new ModelFacingError(`${err instanceof Error ? err.message : err}. gh creates the issue before applying --parent and --blocked-by, so it may already exist: check \`gh issue list -R ${repo} --author @me\` before calling again.`)
   }
 }
 
@@ -66,7 +63,7 @@ query Work($owner: String!, $name: String!, $number: Int!) {
 
 export function splitRepo(repo: string): [owner: string, name: string] {
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(repo)
-  if (!m) throw new ToolError(`Give the repo as <owner>/<name>, not "${repo}".`)
+  if (!m) throw new ModelFacingError(`Give the repo as <owner>/<name>, not "${repo}".`)
   return [m[1]!, m[2]!]
 }
 
@@ -79,16 +76,16 @@ export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
   return { repo: r.nameWithOwner, isPrivate: r.isPrivate, board: p && { owner: p.owner.login, number: p.number, title: p.title, url: p.url } }
 }
 
-// The body alone: for a tool that needs no board.
+// For a tool that must work without a board, which readWork requires.
 export const issueBody = async (io: Io, url: string): Promise<string> => (JSON.parse(await gh(io, ['issue', 'view', url, '--json', 'body'])) as { body: string }).body
 
 export function requireBoard(info: RepoInfo): Board {
-  if (!info.board) throw new ToolError(`${info.repo} has no board. Ask James once whether to set one up, then call ${TOOL_PREFIX}board_setup.`)
+  if (!info.board) throw new ModelFacingError(`${info.repo} has no board. Ask your human partner once whether to set one up, then call ${TOOL_PREFIX}board_setup.`)
   return info.board
 }
 
 export function assertWritable(info: RepoInfo): void {
-  if (info.repo === IDEAS_REPO && !info.isPrivate) throw new ToolError(`${IDEAS_REPO} is public, and it must stay private: make it private again before anything is written to it.`)
+  if (info.repo === IDEAS_REPO && !info.isPrivate) throw new ModelFacingError(`${IDEAS_REPO} is public, and it must stay private: make it private again before anything is written to it.`)
 }
 
 export async function readWork(io: Io, issueUrl: string): Promise<Work> {
@@ -99,14 +96,13 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   const item = (n: any): Item => {
     const onBoard = n.projectItems.nodes.find((p: any) => p?.project?.url === board.url)
     const numbers = (c: any): number[] => c.nodes.map((i: any) => i.number)
-    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, archived: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
+    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, archivedItemId: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
   }
   // A missing issue or a PR number never gets here: GitHub answers NOT_FOUND, and graphql throws its message.
   const raw = repository.issue
-  return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item), own: raw.subIssues.nodes.map(item) }
+  return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item), ownSubIssues: raw.subIssues.nodes.map(item) }
 }
 
-// The spec's table: all Todo → Todo; all Done → Done; all In Review or Done → In Review; anything between → In Progress.
 export function deriveParentStatus(tasks: (Status | undefined)[]): Status {
   const s = tasks.map(t => t ?? 'Todo')
   if (s.every(t => t === 'Done')) return 'Done'
@@ -116,11 +112,11 @@ export function deriveParentStatus(tasks: (Status | undefined)[]): Status {
 }
 
 export async function setStatus(io: Io, board: Board, issue: Item, status: Status): Promise<void> {
-  if (status === 'Done') throw new ToolError(NOT_DONE)
+  if (status === 'Done') throw new ModelFacingError(NOT_DONE)
   const item = [String(board.number), '--owner', board.owner, '--url', issue.url]
   if (!issue.onBoard) await gh(io, ['project', 'item-add', ...item])
   // An archived card stays hidden on the board and from work_list, so a move brings it back.
-  if (issue.archived) await gh(io, ['project', 'item-archive', String(board.number), '--owner', board.owner, '--id', issue.archived, '--undo'])
+  if (issue.archivedItemId) await gh(io, ['project', 'item-archive', String(board.number), '--owner', board.owner, '--id', issue.archivedItemId, '--undo'])
   await gh(io, ['project', 'item-edit', ...item, '--field', 'Status', '--value', status])
 }
 

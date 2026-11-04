@@ -1,54 +1,52 @@
-import { TOOL_PREFIX as P } from '../config.ts'
-import type { PatchSet } from './engine.ts'
+import { TOOL_PREFIX as P } from '../config'
+import type { Patch, PatchSet } from './engine'
 
-export const finishing: PatchSet = {
-  skill: 'superpowers:finishing-a-development-branch',
-  patches: [
-    {
-      id: 'f-tests',
-      find: 'the menu comes after a green suite',
-      replace: 'the PR comes after a green suite',
-      ifMissing: 'Step 1 still promises a menu after the tests',
-    },
-    {
-      id: 'f-principle',
-      find: '**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.',
-      replace: '**Core principle:** Verify tests → Detect environment → Gate → Push and open the PR → Clean up.',
-      ifMissing: 'the overview still promises a menu of options',
-    },
-    {
-      id: 'f-env-comment',
-      find: '# Capture now, while still inside the workspace — Step 5 changes directory',
-      replace: '# Capture now, while still inside the workspace — the discard path changes directory',
-      ifMissing: 'Step 2 says Step 5 changes directory, which only the discard path does',
-    },
-    {
-      id: 'f-env',
-      find: `This determines which menu to show and how cleanup works:
+const patches: Patch[] = [
+  {
+    id:'f-tests',
+    find:'the menu comes after a green suite',
+    replace:'the PR comes after a green suite',
+    ifMissing:'Step 1 still promises a menu after the tests',
+  },
+  {
+    id:'f-principle',
+    find:'**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.',
+    replace:'**Core principle:** Verify tests → Detect environment → Gate → Push and open the PR → Clean up.',
+    ifMissing:'the overview still promises a menu of options',
+  },
+  {
+    id:'f-env-comment',
+    find:'# Capture now, while still inside the workspace — Step 5 changes directory',
+    replace:'# Capture now, while still inside the workspace — the discard path changes directory',
+    ifMissing:'Step 2 says Step 5 changes directory, which only the discard path does',
+  },
+  {
+    id:'f-env',
+    find:`This determines which menu to show and how cleanup works:
 
 | State | Menu | Cleanup |
 |-------|------|---------|
 | \`GIT_DIR == GIT_COMMON\` (normal repo) | Standard 3 options | No worktree to clean up |
 | \`GIT_DIR != GIT_COMMON\`, named branch | Standard 3 options | Provenance-based (see Step 6) |
 | \`GIT_DIR != GIT_COMMON\`, detached HEAD | Reduced 2 options (no merge) | Externally managed — leave in place |`,
-      replace: `This determines how the branch is pushed and how cleanup works:
+    replace:`This determines how the branch is pushed and how cleanup works:
 
 | State | Push | Cleanup |
 |-------|------|---------|
 | \`GIT_DIR == GIT_COMMON\` (normal repo) | \`git push -u origin <branch>\` | No worktree to clean up |
 | \`GIT_DIR != GIT_COMMON\`, named branch | \`git push -u origin <branch>\` | Provenance-based (see Step 6) |
 | \`GIT_DIR != GIT_COMMON\`, detached HEAD | \`git push origin HEAD:refs/heads/<new-branch>\` | Externally managed — leave in place |`,
-      ifMissing: 'the environment table still chooses a menu',
-    },
-    {
-      id: 'f-base',
-      find: 'Confirm before merging: merging into the wrong base is expensive to undo.',
-      replace: 'Confirm it before opening the PR.',
-      ifMissing: 'Step 3 still talks about a local merge',
-    },
-    {
-      id: 'f-options',
-      find: `## Step 4: Present Options
+    ifMissing:'the environment table still chooses a menu',
+  },
+  {
+    id:'f-base',
+    find:'Confirm before merging: merging into the wrong base is expensive to undo.',
+    replace:'Confirm it before opening the PR.',
+    ifMissing:'Step 3 still talks about a local merge',
+  },
+  {
+    id:'f-options',
+    find:`## Step 4: Present Options
 
 **Normal repo and named-branch worktree — present exactly these 3 options:**
 
@@ -126,7 +124,7 @@ Keep the worktree — your human partner iterates on PR feedback there.
 ### Option 3: Keep As-Is
 
 Report: "Keeping branch <name>. Worktree preserved at <path>."`,
-      replace: `## Step 4: Gate
+    replace:`## Step 4: Gate
 
 The PR targets the repo's default branch
 (\`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name\`):
@@ -181,47 +179,51 @@ gh pr merge <n> --squash --delete-branch
 Squash only; the remote branch is deleted.
 
 Keep the worktree — your human partner iterates on PR feedback there.`,
-      ifMissing: 'finishing offers a local merge and keep-as-is, and opens PRs without the Closes check',
-    },
-    {
-      id: 'f-cleanup',
-      find: `**Runs for Option 1 and confirmed discards.** Options 2 and 3 always
+    ifMissing:'finishing offers a local merge and keep-as-is, and opens PRs without the Closes check',
+  },
+  {
+    id:'f-cleanup',
+    find:`**Runs for Option 1 and confirmed discards.** Options 2 and 3 always
 preserve the worktree. Both callers have already changed directory to the
 main repo root — worktree removal must run from outside the worktree —
 and use the \`GIT_DIR\`/\`GIT_COMMON\`/\`WORKTREE_PATH\` values captured in
 Step 2, from before that directory change.`,
-      replace: '**Runs for confirmed discards only.** The PR route always preserves the worktree. The discard path has already changed directory to the main repo root — worktree removal must run from outside the worktree — and uses the `GIT_DIR`/`GIT_COMMON`/`WORKTREE_PATH` values captured in Step 2, from before that directory change.',
-      ifMissing: 'cleanup still refers to options that no longer exist',
-    },
-    {
-      id: 'f-quickref',
-      find: `| Option | Merge | Push | Keep Worktree | Cleanup Branch |
+    replace:'**Runs for confirmed discards only.** The PR route always preserves the worktree. The discard path has already changed directory to the main repo root — worktree removal must run from outside the worktree — and uses the `GIT_DIR`/`GIT_COMMON`/`WORKTREE_PATH` values captured in Step 2, from before that directory change.',
+    ifMissing:'cleanup still refers to options that no longer exist',
+  },
+  {
+    id:'f-quickref',
+    find:`| Option | Merge | Push | Keep Worktree | Cleanup Branch |
 |--------|-------|------|---------------|----------------|
 | 1. Merge locally | yes | - | - | yes |
 | 2. Create PR | - | yes | yes | - |
 | 3. Keep as-is | - | - | yes | - |
 | Discard (explicit request only) | - | - | - | yes (force) |`,
-      replace: `| Route | Push | Keep Worktree | Cleanup Branch |
+    replace:`| Route | Push | Keep Worktree | Cleanup Branch |
 |-------|------|---------------|----------------|
 | The PR | yes | yes | - |
 | Discard (explicit request only) | - | - | yes (force) |`,
-      ifMissing: 'the quick reference still lists a local merge',
-    },
-    {
-      id: 'f-rationalizations',
-      find: `| "They obviously want it merged" | Integration is your human partner's decision. Present the menu and wait. |
+    ifMissing:'the quick reference still lists a local merge',
+  },
+  {
+    id:'f-rationalizations',
+    find:`| "They obviously want it merged" | Integration is your human partner's decision. Present the menu and wait. |
 | "They seem done with this feature — I'll offer to discard it" | The menu is complete as written. Discard happens only when your human partner asks for it in so many words. |`,
-      replace: `| "They obviously want it merged" | Merging is your human partner's call. Hand the PR over and merge only when they ask. |
+    replace:`| "They obviously want it merged" | Merging is your human partner's call. Hand the PR over and merge only when they ask. |
 | "They seem done with this feature — I'll offer to discard it" | The PR route is the only one offered. Discard happens only when your human partner asks for it in so many words. |`,
-      ifMissing: 'two rationalizations still mention the menu',
-    },
-    {
-      id: 'f-merge-rows',
-      find: `| "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
+    ifMissing:'two rationalizations still mention the menu',
+  },
+  {
+    id:'f-merge-rows',
+    find:`| "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
 | "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
 `,
-      replace: '',
-      ifMissing: 'two rationalizations still talk about a local merge',
-    },
-  ],
+    replace:'',
+    ifMissing:'two rationalizations still talk about a local merge',
+  },
+]
+
+export const finishing: PatchSet = {
+  skill: 'superpowers:finishing-a-development-branch',
+  patches,
 }

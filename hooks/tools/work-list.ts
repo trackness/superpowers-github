@@ -1,8 +1,8 @@
-import { currentRepo, link, repoInfo } from '../board.ts'
-import { IDEAS_REPO, TOOL_PREFIX } from '../config.ts'
-import { graphqlPages, ToolError } from '../gh.ts'
-import { workflowDiffs, workflows } from '../setup.ts'
-import { optStr, str, type Tool } from '../tools.ts'
+import { IDEAS_REPO, TOOL_PREFIX } from '../config'
+import { currentRepo, link, repoInfo } from '../github/board'
+import { graphqlPages, ModelFacingError } from '../github/gh'
+import { workflowDiffs, workflows } from '../github/setup'
+import { optStr, str, type Tool } from './engine'
 
 // The board's owner is a user or an organization, and both are a ProjectV2Owner. GitHub applies the board's own filter.
 const ITEMS = `query Items($owner: String!, $number: Int!, $filter: String!, $after: String) {
@@ -24,7 +24,7 @@ const ITEMS = `query Items($owner: String!, $number: Int!, $filter: String!, $af
 export const workListTool: Tool = {
   spec: {
     name: 'work_list',
-    description: `Lists the open issues in Idea or Designed on a repo's board as \`- [#n title](url)\` lines, to ask James which piece of work to pick up. The repo defaults to the session's GitHub repo, else ${IDEAS_REPO}. A repo with no board says so; that is not an error.`,
+    description: `Lists the open issues in Idea or Designed on a repo's board as \`- [#n title](url)\` lines, to ask your human partner which piece of work to pick up. The repo defaults to the session's GitHub repo, else ${IDEAS_REPO}. A repo with no board says so; that is not an error.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -36,13 +36,13 @@ export const workListTool: Tool = {
   },
   async run(io, input) {
     const status = str(input, 'status')
-    if (status !== 'Idea' && status !== 'Designed') throw new ToolError('status must be Idea or Designed')
+    if (status !== 'Idea' && status !== 'Designed') throw new ModelFacingError('status must be Idea or Designed')
     const info = await repoInfo(io, optStr(input, 'repo') ?? (await currentRepo(io)) ?? IDEAS_REPO)
     if (!info.board) return `${info.repo} has no board yet.`
     const { owner, number, title, url } = info.board
     const items = await graphqlPages<any>(io, 'Items', ITEMS, { owner, number, filter: `is:open is:issue status:${status}` }, d => {
       // A login GitHub no longer knows answers null, with no error.
-      if (!d.repositoryOwner?.projectV2) throw new ToolError(`GitHub found no board ${number} of ${owner} (${url}), the board linked to ${info.repo}.`)
+      if (!d.repositoryOwner?.projectV2) throw new ModelFacingError(`GitHub found no board ${number} of ${owner} (${url}), the board linked to ${info.repo}.`)
       return d.repositoryOwner.projectV2.items
     })
     // A safety net behind GitHub's filter.

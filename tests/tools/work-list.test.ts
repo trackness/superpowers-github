@@ -1,10 +1,9 @@
 import { expect, test } from 'claude-code/testing'
-import { boot, callTool, itemsPage, repoData, router, url, workflowsData } from './kit.ts'
+import { boot, callTool, itemsPage, repoData, router, url, workflowsData } from '../kit'
 
 const repoView = (s: { argv: string[] }) => s.argv.slice(0, 3).join(' ') === 'gh repo view'
 
-// A board whose workflows are as board_setup leaves them.
-const SET_UP = { 'Item closed': true, 'Auto-close issue': true }
+const BOARD_SETUP_WORKFLOWS = { 'Item closed': true, 'Auto-close issue': true }
 
 test('work_list lists open issues in the column across every page', async ($, on) => {
   const r = router({
@@ -13,7 +12,7 @@ test('work_list lists open issues in the column across every page', async ($, on
       Items: v => (v.after === 'c1'
         ? itemsPage([{ number: 3, status: 'Idea' }, { number: 4, status: 'Idea', closed: true }])
         : itemsPage([{ number: 1, status: 'Idea' }, { number: 2, status: 'Designed' }], 'c1')),
-      Workflows: () => workflowsData(SET_UP),
+      Workflows: () => workflowsData(BOARD_SETUP_WORKFLOWS),
     },
     cli: s => (repoView(s) ? { stdout: 'trackness/demo\n' } : undefined),
   })
@@ -29,7 +28,7 @@ test('work_list lists open issues in the column across every page', async ($, on
 })
 
 test('work_list warns when the board has a workflow that also moves cards', async ($, on) => {
-  const r = router({ graphql: { Repo: () => repoData({}), Items: () => itemsPage([]), Workflows: () => workflowsData({ ...SET_UP, 'Item added to project': true }) } })
+  const r = router({ graphql: { Repo: () => repoData({}), Items: () => itemsPage([]), Workflows: () => workflowsData({ ...BOARD_SETUP_WORKFLOWS, 'Item added to project': true }) } })
   await boot($, on, { reply: r })
   const res = await callTool($, 'work_list', { status: 'Idea', repo: 'trackness/demo' })
   expect(res.text).toBe([
@@ -51,7 +50,7 @@ test("work_list reads an organization's board through its owner, and refuses one
 
 test('work_list falls back to the ideas repo outside a GitHub repo', async ($, on) => {
   const r = router({
-    graphql: { Repo: () => repoData({ repo: 'trackness/ideas' }), Items: () => itemsPage([]), Workflows: () => workflowsData(SET_UP) },
+    graphql: { Repo: () => repoData({ repo: 'trackness/ideas' }), Items: () => itemsPage([]), Workflows: () => workflowsData(BOARD_SETUP_WORKFLOWS) },
     cli: s => (repoView(s) ? { code: 1, stderr: 'failed to run git: fatal: not a git repository' } : undefined),
   })
   await boot($, on, { reply: r })
