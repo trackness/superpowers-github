@@ -13,8 +13,14 @@ export const finishing: PatchSet = {
     {
       id: 'f-principle',
       find: '**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.',
-      replace: '**Core principle:** Verify tests → Gate → Detect environment → Push and open the PR → Clean up.',
+      replace: '**Core principle:** Verify tests → Detect environment → Gate → Push and open the PR → Clean up.',
       ifMissing: 'the overview still promises a menu of options',
+    },
+    {
+      id: 'f-env-comment',
+      find: '# Capture now, while still inside the workspace — Step 5 changes directory',
+      replace: '# Capture now, while still inside the workspace — the discard path changes directory',
+      ifMissing: 'Step 2 says Step 5 changes directory, which only the discard path does',
     },
     {
       id: 'f-env',
@@ -33,6 +39,12 @@ export const finishing: PatchSet = {
 | \`GIT_DIR != GIT_COMMON\`, named branch | \`git push -u origin <branch>\` | Provenance-based (see Step 6) |
 | \`GIT_DIR != GIT_COMMON\`, detached HEAD | \`git push origin HEAD:refs/heads/<new-branch>\` | Externally managed — leave in place |`,
       ifMissing: 'the environment table still chooses a menu',
+    },
+    {
+      id: 'f-base',
+      find: 'Confirm before merging: merging into the wrong base is expensive to undo.',
+      replace: 'Confirm it before opening the PR.',
+      ifMissing: 'Step 3 still talks about a local merge',
     },
     {
       id: 'f-options',
@@ -116,11 +128,20 @@ Keep the worktree — your human partner iterates on PR feedback there.
 Report: "Keeping branch <name>. Worktree preserved at <path>."`,
       replace: `## Step 4: Gate
 
+The PR targets the repo's default branch
+(\`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name\`):
+GitHub closes issues only from a PR into it. If the base branch from Step 3
+is another branch, tell your human partner and stop before opening the PR.
+
 Call \`${P}pr_check\` with the parent issue. If it names unfinished
 tasks (or, for a small change, says the parent isn't In Review), open no PR:
 tell your human partner which ones, as links, and stop. If the gate passes it
 returns the \`Closes #…\` lines for the PR description: the parent and every
 task.
+
+With no parent issue (a quick task, or a branch that skipped brainstorming),
+skip the gate and the \`Closes\` lines: push and open the PR with only a
+summary in the description, and skip the \`${P}pr_check\` after-check.
 
 ## Step 5: Push and Open the PR
 
@@ -135,12 +156,21 @@ gh pr create --base <base-branch> --title <title> --body <description>
 The description holds a summary of the work, the \`Closes #…\` lines the gate
 gave (the parent and every task), and, after a planned run, the
 \`## Plan changes made during the run\` section from
-subagent-driven-development's final message.
+subagent-driven-development's final message (in a new session, rebuild it
+from the \`Plan change:\` and \`Ruling:\` lines of the run folder's \`progress.md\`).
 
 Then call \`${P}pr_check\` with the parent issue and the PR (its number or
 URL). While it reports a mismatch, fix the description with
 \`gh pr edit <n> --body <description>\` and check again. Hand the PR over to
 your human partner only once it matches.
+
+After a planned run, once it matches, delete the run folder: the PR now
+carries its plan changes and rulings, so the folder is no longer their only
+record.
+
+\`\`\`bash
+rm -rf <repo root>/.superpowers/sdd/<parent issue number>
+\`\`\`
 
 Your human partner merges it, or asks you to:
 
@@ -184,6 +214,14 @@ Step 2, from before that directory change.`,
       replace: `| "They obviously want it merged" | Merging is your human partner's call. Hand the PR over and merge only when they ask. |
 | "They seem done with this feature — I'll offer to discard it" | The PR route is the only one offered. Discard happens only when your human partner asks for it in so many words. |`,
       ifMissing: 'two rationalizations still mention the menu',
+    },
+    {
+      id: 'f-merge-rows',
+      find: `| "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
+| "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
+`,
+      replace: '',
+      ifMissing: 'two rationalizations still talk about a local merge',
     },
   ],
 }
