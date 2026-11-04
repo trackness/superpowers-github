@@ -5,18 +5,35 @@ A Claude Code mod that patches five superpowers 7.0.0 skills (brainstorming, wri
 ## Requirements
 
 - gh 2.102.0 or later, with the `project` scope.
-- The gh-image extension, pinned to v1.4.1: `gh extension install drogers0/gh-image --pin v1.4.1`.
+- The gh-image extension, pinned to v1.4.1: `gh extension remove gh-image` (if any version is installed: a second install says "already installed" and never applies `--pin`), then `gh extension install drogers0/gh-image --pin v1.4.1`.
+- A browser signed in to GitHub as the same account as gh (`gh image check-token` prints the account it finds), and macOS Full Disk Access for the terminal running Claude Code: gh-image uses that browser's session for every upload other than an image or video, and for downloads.
+- superpowers 7.0.0, from the `claude-plugins-official` marketplace: every patch replaces its exact text.
+- `trackness/ideas`, set up once with the mod's tool `board_setup { repo: "trackness/ideas", create: "private" }` (leave out `create` if the repo exists). Until it is, `work_list` outside a repo fails.
 
 ## Install locally
 
-- `claude plugin marketplace add <path to this repository>`
+- `claude plugin marketplace add /Users/james/workspace/claude-code/plugins/superpowers-github`: the repository must live at this path, because the upgrade guard's fix steps name it (`REPO_DIR` in `hooks/config.ts`).
 - `claude plugin install superpowers-github@superpowers-github`
 - Run `/reload-plugins` after editing the mod.
 
 ## When the upgrade guard blocks a skill
 
-Every patch replaces exact superpowers 7.0.0 text. If superpowers has changed and an anchor is missing, the whole skill is blocked rather than run half-patched. Re-check the patch anchors against the installed superpowers version, update the mod, then run `/reload-plugins`.
+Every patch replaces exact superpowers 7.0.0 text. When an anchor is missing, or appears more times than its patch expects, the whole skill is blocked: the block shows what each failed patch expected and what is there now. It also offers a workaround, following the skill with only the patches that applied, and says what each failed patch would break; the skill runs that way only if James chooses it. (When every anchor still matches under another version, the skill runs patched, under one line naming both versions.)
+
+To fix the mod, follow the block's own steps:
+
+1. Run `node /Users/james/workspace/claude-code/plugins/superpowers-github/tests/fixtures/make-fixture.mjs <superpowers root>` (the installed superpowers folder, which the block names) to generate the new version's fixture.
+2. Point the patch tests at the new fixture, and set `PATCHED_FOR` in `hooks/config.ts` to the new version.
+3. Update each failed patch until `claude plugin test /Users/james/workspace/claude-code/plugins/superpowers-github` passes.
+4. Run `/reload-plugins`.
+
+## Tests
+
+`claude plugin test /Users/james/workspace/claude-code/plugins/superpowers-github` runs the suite with every command faked. The fixture test checks only the version, the five skill names and three known passages. To check that the fixture is still superpowers 7.0.0's text verbatim, regenerate it from the 7.0.0 root, then diff:
+
+- `node /Users/james/workspace/claude-code/plugins/superpowers-github/tests/fixtures/make-fixture.mjs /Users/james/.claude/plugins/cache/claude-plugins-official/superpowers/7.0.0`
+- `git -C /Users/james/workspace/claude-code/plugins/superpowers-github diff --exit-code tests/fixtures`
 
 ## License
 
-superpowers' text under `tests/fixtures/` is MIT, © Jesse Vincent; see `tests/fixtures/LICENSE-superpowers`.
+superpowers' text quoted in `hooks/patches/` and copied in `tests/fixtures/` is MIT, © Jesse Vincent; see `tests/fixtures/LICENSE-superpowers`.

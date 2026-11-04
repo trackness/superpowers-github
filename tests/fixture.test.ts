@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import { SKILLS, VERSION } from './fixtures/superpowers-7.0.0.ts'
 
-test('the fixture holds the five patched superpowers 7.0.0 skills verbatim', () => {
+// Spot checks only: the README says how to check the fixture is verbatim (regenerate, then git diff).
+test('the fixture is superpowers 7.0.0 with the five patched skills, spot-checked in three places', () => {
   expect(VERSION).toBe('7.0.0')
   expect(Object.keys(SKILLS).sort()).toEqual(['brainstorming', 'executing-plans', 'finishing-a-development-branch', 'subagent-driven-development', 'writing-plans'])
   expect(SKILLS['brainstorming'].startsWith('---\nname: brainstorming\n')).toBe(true)
