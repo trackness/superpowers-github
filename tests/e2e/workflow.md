@@ -11,6 +11,7 @@ You are the driver of an unattended end-to-end test of the superpowers-github mo
 - Touch only the repo and board this run creates (named `<RUN>`). Never touch `trackness/ideas` or any other repo or board.
 - Never run `gh image extract-token`, and never print a token.
 - A read (`gh`, `git`, `ls`, status, pr_check) may be retried once after a transient network or GraphQL error. An inner turn is never re-run.
+- GitHub can take a moment to show a write in a later read, so an Expect or Assert on a read of GitHub (a `gh` read, status, pr_check) in steps 4 to 7 and in the leftover checks is re-checked before it fails. When it first fails: Bash `date +%s` sets `<TR>`. Then repeat the pair Bash `date +%s` then the same read until it passes, and record FAIL, quoting the last output, once a `date +%s` is 60 or more past `<TR>`. Only the read is repeated, never a write or an inner turn. Step 7.3 has its own, longer wait.
 - When an assertion fails or a call is denied, record the step as FAIL with the exact text that shows it, mark every later step that needs its result SKIPPED, and go straight to step 8. Step 8 always runs, whatever happened before.
 - Record a one-line evidence quote for every step, taken verbatim from a tool's output.
 
@@ -44,10 +45,11 @@ It prints one JSON object. Its `result` is the inner session's last message, `is
 3. Bash: `ls -d <ROOT>`. PASS when it says "No such file or directory". Otherwise record FAIL with this fix: "An earlier run left `<ROOT>` behind: delete it yourself with `rm -rf <ROOT>`." Then go to step 8.
 4. Bash: `date +%Y%m%d-%H%M%S`. Set `<RUN>` to `superpowers-github-e2e-` followed by its output.
 5. Bash: `uuidgen`. Set `<SID>` to its output in lower case.
-6. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder; step 8 removes only what this run adds to it.
-7. Bash: `gh project list --owner trackness --format json`. Record each board's `number` and `title` as `<BOARDS0>`.
-8. Bash: `gh issue list -R trackness/ideas --state all --json number,title,state,updatedAt`. Record its output as `<IDEAS0>`.
-9. Bash: `claude plugin list --json`. Record every entry whose `scope` is `user` (its `id`, `version`, `enabled`, `installedAt` and `lastUpdated`) as `<PLUGINS0>`.
+6. Write `<ROOT>/started` with the line `Marks the start of this run.` Step 8 deletes only what is made in the mod's temp folder after this file.
+7. Bash: `ls -a /tmp/superpowers-github`. Record its entries as `<TMPBASE>` (none if it says "No such file or directory"). This is the mod's temp folder.
+8. Bash: `gh project list --owner trackness --format json`. Record each board's `number` and `title` as `<BOARDS0>`.
+9. Bash: `gh issue list -R trackness/ideas --state all --json number,title,state,updatedAt`. Record its output as `<IDEAS0>`.
+10. Bash: `claude plugin list --json`. Record every entry whose `scope` is `user` (its `id`, `version`, `enabled`, `installedAt` and `lastUpdated`) as `<PLUGINS0>`.
 
 ### 2. Repo, board, clone, superpowers
 
@@ -125,7 +127,7 @@ Each stage step runs once. If a step a reply calls for has already passed, don't
 2. Bash: `gh pr list -R trackness/<RUN> --state open --json number,headRefName,baseRefName,url`. Assert exactly one PR, with `baseRefName` `main` and a `headRefName` other than `main`. Set `<PR>` to its number and `<BR>` to its `headRefName`.
 3. Bash: `gh pr view <PR> -R trackness/<RUN> --json commits,files,body`. Assert at least one commit, `files` exactly one entry with `path` `VERSION`, and a body that contains `Closes #<P>`, `Closes #<T>` and `## Plan changes made during the run`.
 4. Bash: `git -C <CLONE> show origin/<BR>:VERSION`. Assert it prints exactly `1`: the task's commit is on the pushed branch.
-5. Call `mcp__superpowers-github__pr_check` with `{ "parent": "<PURL>", "pr": <PR> }`. Expect `PR #<PR> closes exactly the parent and every task: hand it over.` If it says the closing issues don't match, call it once more (GitHub can take a moment to link them); the second answer decides.
+5. Call `mcp__superpowers-github__pr_check` with `{ "parent": "<PURL>", "pr": <PR> }`. Expect `PR #<PR> closes exactly the parent and every task: hand it over.` (GitHub can take a moment to link the closing issues: re-check as in Rules.)
 6. Bash: `ls -a <CLONE>/.superpowers/sdd`. Say in the report's Notes whether `<P>` is still listed (finishing deletes the run folder once the PR matches). This is not an assertion.
 
 ### 7. The merge: every issue closed and in Done
@@ -144,10 +146,11 @@ Do each part that applies, even after a failure. Skip only what this run never c
 3. If step 2.13 or the opening turn ran: Bash `rm -rf /private/tmp/claude-501/-private-tmp-superpowers-github-e2e-workflow-clone`. This is where those sessions' background tasks wrote their output; purge leaves it.
 4. If `<RUN>` is set: Bash `gh repo delete trackness/<RUN> --yes` (an error that the repo does not exist is fine when step 2 never created it).
 5. If `<RUN>` is set: Bash `gh project list --owner trackness --format json`. For each board whose `title` is exactly `<RUN>`: Bash `gh project view <its number> --owner trackness --format json`, and only if its `title` is exactly `<RUN>`, Bash `gh project delete <its number> --owner trackness`. Deleting a repo does not delete its board.
-6. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it), then Bash `rm -rf <ROOT>`
-7. If `<TMPBASE>` was recorded: Bash `ls -a /tmp/superpowers-github`. For each entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `rm -rf /tmp/superpowers-github/<entry>`. If `<TMPBASE>` was none and the folder is now empty: Bash `rmdir /tmp/superpowers-github`.
+6. If `<RUN>` is set: Bash `cd /private/tmp` (Claude Code refuses to delete the working directory or a folder above it).
+7. If step 1.6 wrote `<ROOT>/started`: Bash `ls -a /tmp/superpowers-github`. If it lists an entry other than `.` and `..` that is not in `<TMPBASE>`: Bash `find /tmp/superpowers-github -mindepth 1 -newer <ROOT>/started -delete`. It deletes everything made in the mod's temp folder since step 1.6, and keeps what was there before. Then, if `<TMPBASE>` was none and the folder exists: Bash `rmdir /tmp/superpowers-github`.
+8. If `<RUN>` is set: Bash `rm -rf <ROOT>`
 
-Then check for leftovers, each with one Bash call:
+Then check for leftovers, each with one Bash call and re-checked as in Rules:
 
 - `gh repo list trackness --limit 300 --json name`: no name starts `superpowers-github-e2e-`.
 - `gh project list --owner trackness --format json`: the boards' numbers and titles are exactly `<BOARDS0>`.
