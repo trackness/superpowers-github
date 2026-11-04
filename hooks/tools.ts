@@ -39,6 +39,18 @@ export function registerTools(on: On, tools: Tool[]): void {
   for (const t of tools) {
     const { name } = t.spec
     on('tool.call', { tool: `${TOOL_PREFIX}${name}` as const }, async ($, e) => {
+      // Answering in place skips the engine's permission path, so ask for its verdict on this call first.
+      const { tool, tool_use_id, agentId, requestMeta, ...input } = e
+      try {
+        const verdict = await $.tool.check({ tool, input })
+        if (verdict.decision === 'deny') return { deny: verdict.reason ?? `${tool} is denied.` }
+        if (verdict.decision === 'ask') {
+          const question = `${verdict.reason ?? ''} Run ${tool} with ${JSON.stringify(input).slice(0, 500)}?`.trim()
+          if ((await $.ui.ask(question, ['Yes', 'No'])) !== 'Yes') return { deny: `James did not allow ${tool}.` }
+        }
+      } catch (err) {
+        return { deny: `${PLUGIN} ${name} did not run: its permission check failed: ${err instanceof Error ? err.message : String(err)}` }
+      }
       const io: Io = {
         process: { spawn: request => $.process.spawn(request) },
         fs: {
@@ -48,7 +60,7 @@ export function registerTools(on: On, tools: Tool[]): void {
         },
       }
       try {
-        return { result: await t.run(io, e, { tool_use_id: e.tool_use_id }) }
+        return { result: await t.run(io, e, { tool_use_id }) }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return { deny: err instanceof ToolError ? message : `${PLUGIN} ${name} failed: ${message}` }

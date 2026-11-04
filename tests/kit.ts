@@ -7,18 +7,23 @@ export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issue
 
 export type Spawned = { argv: string[]; cwd?: string; input?: string }
 export type Reply = { stdout?: string; stderr?: string; code?: number }
-export type World = { spawned: Spawned[]; written: Record<string, string> }
+export type World = { spawned: Spawned[]; written: Record<string, string>; registered: string[] }
+export type Verdict = { decision: 'allow' | 'ask' | 'deny'; reason?: string }
 
 // The fs.write stand-in replaces the engine's own write, so it keeps the engine's limit (checked live on 2.1.317).
 const WRITE_LIMIT = 4 * 1024 * 1024
 
-// Stands in for everything beneath the plugin, then starts the session.
-export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply; files?: Record<string, string>; dirs?: string[]; cwd?: string }): Promise<World> {
-  const w: World = { spawned: [], written: {} }
+// Stands in for everything beneath the plugin, then starts the session. The permission verdict is `check`'s, allow by default.
+export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply; files?: Record<string, string>; dirs?: string[]; cwd?: string; check?: (e: { tool: string; input: unknown }) => Verdict }): Promise<World> {
+  const w: World = { spawned: [], written: {}, registered: [] }
   const files = o.files ?? {}
   const dirs = o.dirs ?? []
   const isFile = (path: string) => Object.hasOwn(files, path)
-  on('tool.register', (_, e) => ({ value: { tool: TOOL_PREFIX + e.name } }))
+  on('tool.register', (_, e) => {
+    w.registered.push(e.name)
+    return { value: { tool: TOOL_PREFIX + e.name } }
+  })
+  on('tool.check', (_, e) => o.check?.(e) ?? { decision: 'allow' })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('skill.prompt', (_, e) => ({ text: e.text }))
   on('process.spawn', async function* (_, e) {
@@ -63,7 +68,9 @@ export function router(r: { graphql?: Record<string, (variables: any) => unknown
   const seen: Record<string, any[]> = {}
   const reply = (s: Spawned): Reply => {
     if (s.argv.slice(0, 3).join(' ') === 'gh api graphql') {
-      const { operationName, variables } = JSON.parse(s.input ?? '{}')
+      const { query, operationName, variables } = JSON.parse(s.input ?? '{}')
+      // As GitHub does: a name the query text does not declare is refused.
+      if (!new RegExp(`\\b(?:query|mutation)\\s+${operationName}\\b`).test(query ?? '')) return { code: 1, stderr: `No operation named "${operationName}"` }
       ;(seen[operationName] ??= []).push(variables)
       const answer = r.graphql?.[operationName]
       if (answer) return { stdout: JSON.stringify({ data: answer(variables) }) }
