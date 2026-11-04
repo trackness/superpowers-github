@@ -45,6 +45,20 @@ test("issue_edit sets a body without a board: it reads the repo and the issue's 
   expect(w.spawned.find(s => s.argv[2] === 'edit')).toMatchObject({ argv: ['gh', 'issue', 'edit', url(11), '--body-file', '-'], input: body })
 })
 
+test('issue_edit appends to the body GitHub holds, so nothing in it is retyped', async ($, on) => {
+  const w = await boot($, on, { reply: world() })
+  const r = await callTool($, 'issue_edit', { issue: url(11), appendBody: '## Plan\n\nGoal: x\n' })
+  expect(r.deny).toBeUndefined()
+  expect(w.spawned.find(s => s.argv[2] === 'edit')).toMatchObject({ argv: ['gh', 'issue', 'edit', url(11), '--body-file', '-'], input: `${current.trimEnd()}\n\n## Plan\n\nGoal: x\n` })
+})
+
+test('issue_edit refuses body and appendBody together, and an appended body over the limit', async ($, on) => {
+  const w = await boot($, on, { reply: world() })
+  expect((await callTool($, 'issue_edit', { issue: url(11), body: current, appendBody: 'x' })).deny).toContain('not both')
+  expect((await callTool($, 'issue_edit', { issue: url(11), appendBody: 'x'.repeat(65_536) })).deny).toContain('65,536')
+  expect(argvs(w).some(a => a.startsWith('gh issue edit'))).toBe(false)
+})
+
 test('issue_edit sets a title alone without reading the body', async ($, on) => {
   const w = await boot($, on, { reply: world() })
   const r = await callTool($, 'issue_edit', { issue: url(11), title: 'Task 3: New' })

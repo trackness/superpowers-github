@@ -25,6 +25,7 @@ test('every tool that writes refuses a public ideas repo, by GitHub\'s spelling 
   const calls: [string, Record<string, unknown>][] = [
     ['issue_edit', { issue, title: 'T' }],
     ['issue_edit', { issue, body: 'B' }],
+    ['issue_edit', { issue, appendBody: 'B' }],
     ['issue_create', { parent: issue, title: 'Task 1: T', body: 'B' }],
     ['issue_create', { repo: 'Trackness/Ideas', title: 'T', body: 'B' }],
     ['attach', { issue, path: '/tmp/x/a.md' }],
