@@ -5,7 +5,8 @@ export type Board = { owner: string; number: number; title: string; url: string 
 export type RepoInfo = { repo: string; isPrivate: boolean; board?: Board }
 // `archived`: the card's item ID when its card on the board is archived.
 export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archived?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
-export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[] }
+// `tasks`: the parent's sub-issues when the issue has a parent, else its own; `own`: always the issue's own.
+export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[]; own: Item[] }
 
 export const NOT_DONE = `only GitHub's "Item closed" workflow moves an issue to Done, when the issue is closed`
 
@@ -102,7 +103,7 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   }
   // A missing issue or a PR number never gets here: GitHub answers NOT_FOUND, and graphql throws its message.
   const raw = repository.issue
-  return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item) }
+  return { repo, board, issue: item(raw), parent: raw.parent ? item(raw.parent) : undefined, tasks: (raw.parent ?? raw).subIssues.nodes.map(item), own: raw.subIssues.nodes.map(item) }
 }
 
 // The spec's table: all Todo → Todo; all Done → Done; all In Review or Done → In Review; anything between → In Progress.

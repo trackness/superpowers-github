@@ -54,6 +54,7 @@ export function registerTools(on: On, tools: Tool[]): void {
       const io: Io = {
         process: { spawn: request => $.process.spawn(request) },
         fs: {
+          read: path => $.fs.read(path),
           write: (path, text) => $.fs.write(path, text),
           exists: path => $.fs.exists(path),
           stat: (path, options) => $.fs.stat(path, options),

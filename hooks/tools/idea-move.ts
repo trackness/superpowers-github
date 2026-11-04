@@ -1,6 +1,6 @@
 import { assertWritable, created, createIssue, failedAfter, link, NOT_DONE, readWork, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { attachmentUrls, checkBody } from '../body.ts'
-import { IDEAS_REPO, TMP_ROOT } from '../config.ts'
+import { IDEAS_REPO, TMP_ROOT, TOOL_PREFIX } from '../config.ts'
 import { gh, graphqlPages, parseIssue, ToolError } from '../gh.ts'
 import { download, parseRefs, upload } from '../image.ts'
 import { str, type Tool } from '../tools.ts'
@@ -16,9 +16,10 @@ const COMMENTS = `query Comments($owner: String!, $name: String!, $number: Int!,
   }
 }`
 
-// The issue's links to other issues. With a parent, readWork's tasks are the parent's sub-issues, not the issue's own.
+// The issue's links to other issues: its parent, its own sub-issues and its dependencies.
 const links = (w: Work): string[] => [
-  ...(w.parent ? [`parent #${w.parent.number}`] : w.tasks.map(t => `sub-issue #${t.number}`)),
+  ...(w.parent ? [`parent #${w.parent.number}`] : []),
+  ...w.own.map(t => `sub-issue #${t.number}`),
   ...w.issue.blockedBy.map(n => `blocked by #${n}`),
   ...w.issue.blocking.map(n => `blocking #${n}`),
 ]
@@ -77,13 +78,40 @@ export const ideaMoveTool: Tool = {
     // Old attachment URLs are never referenced from the public repo; one left once every [name](url) link is taken out can't be uploaded again.
     const left = attachmentUrls(texts.map(t => refs.reduce((s, r) => s.replaceAll(r.url, ''), t)).join('\n'))
     if (left.length) throw new ToolError(`These attachments in ${link(issue)} or its comments aren't [name](url) links, so they can't be uploaded again, and a public issue must not reference them: ${left.join(', ')}. Make each one a link, then call idea_move again.`)
+    // Everything is downloaded first: a .md attachment (idea.md) can link the others, and is checked before anything is uploaded.
+    const files: string[] = []
+    for (const [i, r] of refs.entries()) files.push(await download(io, r, `${TMP_ROOT}/${call.tool_use_id}/${i}`))
+    // shortcut: a .md that links another .md is refused (its new copy may not exist yet); upload in link order if that is ever needed.
+    const known = refs.filter((_, i) => !files[i]!.endsWith('.md')).map(r => r.url)
+    const docs = new Map<number, string>()
+    for (const [i, file] of files.entries()) {
+      if (!file.endsWith('.md')) continue
+      const text = await io.fs.read(file)
+      const unknown = attachmentUrls(text).filter(u => !known.includes(u))
+      if (unknown.length) throw new ToolError(`${refs[i]!.markdown} links attachments that no [name](url) link in ${link(issue)} or its comments names, so their new copies can't be swapped in: ${unknown.join(', ')}. Link each one in the issue's ## Attachments list with ${TOOL_PREFIX}issue_edit, then call idea_move again. Nothing was uploaded.`)
+      docs.set(i, text)
+    }
     const fresh = new Map<string, string>()
-    for (const [i, r] of refs.entries()) fresh.set(r.url, (await upload(io, await download(io, r, `${TMP_ROOT}/${call.tool_use_id}/${i}`), dest.repo)).url)
     const swap = (t: string) => [...fresh].reduce((s, [old, now]) => s.replaceAll(old, now), t)
-    const [body, copies] = [swap(issue.body), comments.map(swap)]
-    sized([body, ...copies]) // a fresh URL can be longer than the one it replaced
-
-    const url = await createIssue(io, dest.repo, issue.title, body)
+    const put = async (i: number) => fresh.set(refs[i]!.url, (await upload(io, files[i]!, dest.repo)).url)
+    let url: string, body: string, copies: string[]
+    try {
+      for (const i of refs.keys()) if (!docs.has(i)) await put(i)
+      // Each .md goes up last, with its links swapped like the body's.
+      for (const [i, text] of docs) {
+        await io.fs.write(files[i]!, swap(text))
+        await put(i)
+      }
+      body = swap(issue.body)
+      copies = comments.map(swap)
+      sized([body, ...copies]) // a fresh URL can be longer than the one it replaced
+      url = await createIssue(io, dest.repo, issue.title, body)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      // An error that starts "created <url>" names the issue the uploads are linked from.
+      if (!fresh.size || message.startsWith('created ')) throw err
+      throw new ToolError(`${message} Already uploaded to ${dest.repo}, linked from nowhere: ${[...fresh.values()].join(', ')}`)
+    }
     let step = 'reading the new issue\'s URL'
     try {
       const recreated = created(url, issue.title, body)

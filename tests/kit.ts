@@ -98,8 +98,8 @@ export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: strin
 }
 
 // The answer to op `Work`: with `parent` the issue is a task and `tasks` are the parent's sub-issues; otherwise they are the issue's own.
-// An issue's card on the board has the item ID `item-<number>`.
-export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; board?: number; repo?: string }): unknown {
+// `own` gives the issue's own sub-issues when it also has a parent. An issue's card on the board has the item ID `item-<number>`.
+export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; own?: ItemSpec[]; board?: number; repo?: string }): unknown {
   const [repo, board, tasks] = [o.repo ?? DEMO, o.board ?? 1, o.tasks ?? []]
   const issue = (s: ItemSpec) => ({
     number: s.number,
@@ -113,7 +113,7 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
   })
   const subIssues = (specs: ItemSpec[]) => ({ nodes: specs.map(issue) })
   const parent = o.parent ? { ...issue(o.parent), subIssues: subIssues(tasks) } : null
-  return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.parent ? [] : tasks), parent } } }
+  return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.own ?? (o.parent ? [] : tasks)), parent } } }
 }
 
 // The answer to op `ClosingRefs`: a PR into `base` (default main, the repo's default branch) with this body that closes these issues of `repo`.

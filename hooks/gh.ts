@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 // function, so the hook builds this from closures that spell `$.noun.method(...)` (registerTools).
 export type Io = {
   process: Pick<EngineInterface['process'], 'spawn'>
-  fs: Pick<EngineInterface['fs'], 'write' | 'exists' | 'stat'>
+  fs: Pick<EngineInterface['fs'], 'write' | 'exists' | 'stat'> & { read: (path: string) => Promise<string> } // text only: $.fs.read is overloaded
 }
 
 // An error whose message is meant for the model as it stands.
