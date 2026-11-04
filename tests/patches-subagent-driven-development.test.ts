@@ -19,6 +19,7 @@ const PRESENT = [
   'Batch small same-shape work',
   'names each batched sub-issue',
   'moves to In Review now',
+  'giving the issue numbers (the `#n` from',
 ]
 const patched = () => applyPatches(SKILLS['subagent-driven-development'], subagentDrivenDevelopment)
 test('every subagent-driven-development patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))

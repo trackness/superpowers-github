@@ -4,7 +4,10 @@ import { writingPlans } from '../hooks/patches/writing-plans.ts'
 import { SKILLS } from './fixtures/superpowers-7.0.0.ts'
 import { boot, router } from './kit.ts'
 
-const ABSENT = ['docs/superpowers/plans/', 'executing-plans', '**Spec:**', 'Native', 'Which execution approach', '# [Feature Name] Implementation Plan']
+const ABSENT = [
+  'docs/superpowers/plans/', 'executing-plans', '**Spec:**', 'Native', 'Which execution approach', '# [Feature Name] Implementation Plan',
+  'a new one made with', 'pass it back', "run subagent-driven-development's pre-start check",
+]
 const PRESENT = [
   'mcp__superpowers-github__work_list',
   'mcp__superpowers-github__issue_create',
@@ -15,6 +18,13 @@ const PRESENT = [
   '65,536',
   'should we start?',
   'superpowers:subagent-driven-development',
+  'get its name and visibility from James',
+  'with `appendBody` set to the `## Plan` section',
+  '`blockedBy` listing the issue numbers (the `#n` from `mcp__superpowers-github__issue_create` or the status listing), not the task numbers',
+  '`removeBlockedBy` where the fix is about order, giving the issue numbers (the `#n` from `mcp__superpowers-github__issue_create` or the status listing), not the task numbers',
+  'do not load that skill',
+  'inside a repo also with `repo` `trackness/ideas`',
+  'run Self-Review checks 1-5 first; then write the parent\'s `## Plan` and create the sub-issues; then run check 6',
 ]
 const patched = () => applyPatches(SKILLS['writing-plans'], writingPlans)
 test('every writing-plans patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))

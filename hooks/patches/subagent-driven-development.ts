@@ -141,7 +141,9 @@ comment. Otherwise, before dispatching Task 1, fix every finding in the plan
 itself — the spec is the binding authority, the plan is its argument: call
 \`${P}issue_edit\` on each affected sub-issue of a task
 not yet done (GitHub keeps every edit in the issue's history), with
-\`addBlockedBy\` or \`removeBlockedBy\` where the fix is about task order.
+\`addBlockedBy\` or \`removeBlockedBy\` where the fix is about task order,
+giving the issue numbers (the \`#n\` from \`${P}issue_create\` or the
+status listing), not the task numbers.
 Announce each edit in the session at once as
 \`Edited <issue link>: <what changed> — <why>\`, ledger it as
 \`Plan change: <issue URL> — <what changed> — <why>\`, and then dispatch
