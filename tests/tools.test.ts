@@ -95,6 +95,25 @@ test('an ask or deny a rule decided, and an ask under an org ceiling, stand as t
   expect(await $.tool.check({ tool: `${TOOL_PREFIX}work_list`, input: {}, ceiling: 'ask' })).toMatchObject({ decision: 'ask' })
 })
 
+// Core's plan-mode ask, as 2.1.318 words it (Ooe): ruleless, so only its reason sets it apart.
+const planMode = (e: { tool: string }): Verdict => ({ decision: 'ask', reason: `Cannot call ${e.tool} while in plan mode.` })
+
+test('in plan mode the vouch stands aside, so every call of the mod\'s tools is put to James', async ($, on) => {
+  const questions = answer(on, 'No')
+  const w = await boot($, on, { reply: git, check: e => (e.tool.startsWith(TOOL_PREFIX) ? planMode(e) : { decision: 'allow' }) })
+  for (const name of w.registered) expect(await $.tool.check({ tool: `${TOOL_PREFIX}${name}`, input: {} })).toEqual(planMode({ tool: `${TOOL_PREFIX}${name}` }))
+  expect((await callTool($, 'idea_move', { issue: url(12) })).deny).toBe(`James did not allow ${TOOL_PREFIX}idea_move.`)
+  expect(questions).toHaveLength(1)
+  expect(questions[0]).toContain('while in plan mode')
+  expect(w.spawned).toEqual([])
+})
+
+test('an ask another mod\'s hook made stands', async ($, on) => {
+  const guard = (): Verdict => ({ decision: 'ask', reason: 'The guard mod asks.', plugin: 'guard' })
+  await boot($, on, { reply: git, check: guard })
+  expect(await $.tool.check({ tool: RUN_FOLDER, input: {} })).toMatchObject({ decision: 'ask', reason: 'The guard mod asks.' })
+})
+
 test('the vouch matches only the mod\'s own tool names', async ($, on) => {
   await boot($, on, { reply: git, check: ruleless })
   for (const tool of ['Bash', 'mcp__other__run_folder', `${TOOL_PREFIX}not_a_tool`]) expect(await $.tool.check({ tool, input: {} })).toEqual(ruleless())

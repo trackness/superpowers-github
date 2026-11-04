@@ -37,10 +37,12 @@ export function registerTools(on: On, tools: Tool[]): void {
     return next(e)
   })
   // With no settings rule the engine asks for every call of a mod's tool, so the mod vouches for its own.
-  // Only that ruleless ask is answered: a rule's deny or ask, an org ceiling and plan mode stand.
+  // Only core's own ruleless ask is answered: a rule's deny or ask, an org ceiling, another mod's ask and plan mode stand.
+  // The engine holds plan mode only on a real call's path, and this mod's calls answer in place, so the hook must keep it.
+  // shortcut: plan mode shows only in core's reason ("Cannot call <tool> while in plan mode.", 2.1.318); test a mode field if tool.check gains one.
   on('tool.check', { tool: tools.map(t => `${TOOL_PREFIX}${t.spec.name}`) }, async (_, e, next) => {
     const verdict = await next(e)
-    if (verdict.decision !== 'ask' || verdict.rule !== undefined || verdict.ceiling !== undefined) return verdict
+    if (verdict.decision !== 'ask' || verdict.rule !== undefined || verdict.ceiling !== undefined || verdict.plugin !== undefined || /plan mode/i.test(verdict.reason ?? '')) return verdict
     return { decision: 'allow', reason: `${PLUGIN} vouches for its own tool` }
   })
   for (const t of tools) {
