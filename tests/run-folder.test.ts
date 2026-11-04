@@ -42,6 +42,19 @@ test('run_folder leaves an existing .gitignore alone', async ($, on) => {
   expect(w.written).toEqual({})
 })
 
+test('run_folder refuses a parent from another repo than the checkout, ignoring case', async ($, on) => {
+  let here = 'trackness/site'
+  const w = await boot($, on, {
+    reply: router({ cli: s => (s.argv.join(' ') === 'gh repo view --json nameWithOwner --jq .nameWithOwner' ? { stdout: `${here}\n` } : s.argv[1] === 'rev-parse' ? { stdout: '/work/repo\n' } : s.argv[0] === 'mkdir' ? {} : undefined) }),
+  })
+  const r = await callTool($, 'run_folder', { parent: url(12) })
+  expect(r.deny).toBe(`The parent ${url(12)} is in trackness/demo, but this checkout is trackness/site: its run folder and commits would land in trackness/site. Work from a checkout of trackness/demo.`)
+  expect(argvs(w).filter(a => a.startsWith('mkdir'))).toEqual([])
+  expect(w.written).toEqual({})
+  here = 'Trackness/Demo'
+  expect((await callTool($, 'run_folder', { parent: url(12) })).text).toBe(DIR)
+})
+
 test('review_package writes the commit list, stat and diff for the range', async ($, on) => {
   const w = await boot($, on, { reply: review() })
   const r = await callTool($, 'review_package', RANGE)

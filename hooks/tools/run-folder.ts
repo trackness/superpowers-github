@@ -1,4 +1,5 @@
-import { git, type Io, parseIssue, runOk } from '../gh.ts'
+import { currentRepo } from '../board.ts'
+import { git, type Io, parseIssue, runOk, ToolError } from '../gh.ts'
 import { str, type Tool } from '../tools.ts'
 
 export const PARENT = {
@@ -8,7 +9,10 @@ export const PARENT = {
 
 // The run folder superpowers' sdd-workspace makes, keyed by the parent issue's number instead of the plan file.
 export async function runFolder(io: Io, parentUrl: string): Promise<string> {
-  const { number } = parseIssue(parentUrl)
+  const { number, repo, url } = parseIssue(parentUrl)
+  // The folder is keyed by number alone, so in another repo's checkout it would be that repo's own #<number>. Unknown (gh can't tell) passes.
+  const here = await currentRepo(io)
+  if (here && here.toLowerCase() !== repo.toLowerCase()) throw new ToolError(`The parent ${url} is in ${repo}, but this checkout is ${here}: its run folder and commits would land in ${here}. Work from a checkout of ${repo}.`)
   const root = (await git(io, ['rev-parse', '--show-toplevel'])).replace(/\n$/, '')
   const sdd = `${root}/.superpowers/sdd`
   const dir = `${sdd}/${number}`
@@ -21,7 +25,7 @@ export async function runFolder(io: Io, parentUrl: string): Promise<string> {
 export const runFolderTool: Tool = {
   spec: {
     name: 'run_folder',
-    description: "Resolves and creates the run folder for a parent issue, in place of superpowers' scripts/sdd-workspace: <repo root>/.superpowers/sdd/<parent issue number>/, kept out of git by .superpowers/sdd/.gitignore (created only when absent). Returns the folder's absolute path. A folder that already exists for the same parent is a resume: its progress log says where the run stands.",
+    description: "Resolves and creates the run folder for a parent issue, in place of superpowers' scripts/sdd-workspace: <repo root>/.superpowers/sdd/<parent issue number>/, kept out of git by .superpowers/sdd/.gitignore (created only when absent). Returns the folder's absolute path. Refuses a parent from another repo than this checkout's. A folder that already exists for the same parent is a resume: its progress log says where the run stands.",
     inputSchema: { type: 'object', properties: { parent: PARENT }, required: ['parent'] },
   },
   run: (io, input) => runFolder(io, str(input, 'parent')),

@@ -494,7 +494,7 @@ Checked end to end on 2026-11-03 on throwaway boards, since deleted:
 - Consumes: `repoInfo`, `assertWritable` (Task 4).
 - Produces in `hooks/setup.ts`:
   - `statusField($, owner: string, number: number): Promise<{ projectId: string; fieldId: string; options: { id: string; name: string }[] }>` uses op `Fields`, vars `{ owner, number }`.
-  - `setOptions($, field): Promise<void>` uses op `SetOptions`, vars `{ fieldId, options }`. The options are the six `STATUSES` in order, each `{ name, ...OPTION_STYLE[name] }`, plus `id` wherever the field already has an option of that name.
+  - `setOptions($, field, drop: boolean): Promise<void>` uses op `SetOptions`, vars `{ fieldId, options }`. The options are the six `STATUSES` in order, each `{ name, ...OPTION_STYLE[name] }`, plus `id` wherever the field already has an option of that name. It refuses a field with no option named exactly Done, and, unless `drop`, one with options outside the six (audit-fix D-1, D-2).
   - `workflows($, owner, number): Promise<{ id: string; name: string; enabled: boolean }[]>` uses op `Workflows`.
   - `workflowDiffs(list): string[]` gives one line per difference:
     - a workflow that must be on and is missing → `<name>: missing, must be on`;
@@ -502,7 +502,7 @@ Checked end to end on 2026-11-03 on throwaway boards, since deleted:
     - one that must be off and is present and enabled → `<name>: on, must be off`.
 
     A must-be-off workflow that is deleted or disabled is fine.
-  - `deleteOffWorkflows($, list): Promise<string[]>` deletes each present workflow that `WORKFLOWS` says must be off, using op `DeleteWorkflow`, vars `{ workflowId }`. It returns their names.
+  - `deleteOffWorkflows($, list): Promise<void>` deletes each present workflow that `WORKFLOWS` says must be off, using op `DeleteWorkflow`, vars `{ workflowId }`.
   - `ensureBoardView($, owner, number, projectId): Promise<void>` uses op `Views`. When no view has `BOARD_LAYOUT`, it uses op `CreateView`, vars `{ projectId, name: 'Board', layout: 'BOARD_LAYOUT' }`.
   - `fixSteps(boardUrl: string): string`, exact copy below, for a must-be-on workflow that is missing or off: the one case the API can't fix.
   - `OPTION_STYLE: Record<Status, { color: string; description: string }>`:

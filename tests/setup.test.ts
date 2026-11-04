@@ -8,9 +8,14 @@ const FRESH = { 'Item closed': true, 'Auto-close issue': true, 'Item added to pr
 const KEPT = { 'Item closed': true, 'Auto-close issue': true }
 const merge = (repo: string) => `gh repo edit ${repo} --enable-squash-merge --enable-merge-commit=false --enable-rebase-merge=false --delete-branch-on-merge --squash-merge-commit-message pr-title`
 
-type BoardState = { options: string[]; workflows: Record<string, boolean>; views: string[] }
-const fresh = (): BoardState => ({ options: ['Todo', 'In Progress', 'Done'], workflows: { ...FRESH }, views: ['TABLE_LAYOUT'] })
-const built = (workflows: Record<string, boolean> = KEPT): BoardState => ({ options: [...STATUSES], workflows: { ...workflows }, views: ['BOARD_LAYOUT'] })
+// The six merge fields as GraphQL reads them: a new repo's defaults, and what `merge(repo)` leaves (gh's pr-title is PR_TITLE and BLANK).
+const MERGE_DEFAULT = { squashMergeAllowed: true, mergeCommitAllowed: true, rebaseMergeAllowed: true, deleteBranchOnMerge: false, squashMergeCommitTitle: 'COMMIT_OR_PR_TITLE', squashMergeCommitMessage: 'COMMIT_MESSAGES' }
+const MERGE_SET = { squashMergeAllowed: true, mergeCommitAllowed: false, rebaseMergeAllowed: false, deleteBranchOnMerge: true, squashMergeCommitTitle: 'PR_TITLE', squashMergeCommitMessage: 'BLANK' }
+
+// `merged`: the repo has the merge settings `gh repo edit` sets.
+type BoardState = { options: string[]; workflows: Record<string, boolean>; views: string[]; merged: boolean }
+const fresh = (): BoardState => ({ options: ['Todo', 'In Progress', 'Done'], workflows: { ...FRESH }, views: ['TABLE_LAYOUT'], merged: false })
+const built = (workflows: Record<string, boolean> = KEPT): BoardState => ({ options: [...STATUSES], workflows: { ...workflows }, views: ['BOARD_LAYOUT'], merged: true })
 
 const head = (s: Spawned, n: number) => s.argv.slice(0, n).join(' ')
 
@@ -39,9 +44,11 @@ function world(b: BoardState, o: { repo?: string; boards?: string[]; number?: nu
         b.views.push(v.layout)
         return { createProjectV2View: { projectV2View: { id: 'V1' } } }
       },
+      Merge: () => ({ repository: b.merged ? MERGE_SET : MERGE_DEFAULT }),
     },
     cli: s => {
       if (head(s, 3) === 'gh project create') return projectJson(o.number ?? 7)
+      if (head(s, 3) === 'gh repo edit') b.merged = true
       return head(s, 2) === 'gh project' || head(s, 2) === 'gh repo' ? {} : undefined
     },
   })
@@ -110,28 +117,87 @@ test('board_setup reports a board that differs, and repairs it on request', asyn
   expect(first.deny).toContain('repair: true')
   expect(first.deny).not.toContain('Save and turn on workflow')
   expect(r.seen.DeleteWorkflow).toBeUndefined()
-  expect(r.seen.Views).toBeUndefined()
+  expect(r.seen.CreateView).toBeUndefined()
   expect(argvs(w)).not.toContain(merge(DEMO))
   const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
   expect(r.seen.DeleteWorkflow).toContainEqual({ workflowId: 'wf-Pull request merged' })
-  // Repair also checks for a board view (this board has one) and sets the merge settings.
-  expect(r.seen.Views).toHaveLength(1)
+  // Repair also checks for a board view (this board has one) and sets the merge settings; each check reads the views too.
+  expect(r.seen.Views).toHaveLength(3)
   expect(r.seen.CreateView).toBeUndefined()
   expect(argvs(w)).toContain(merge(DEMO))
   expect(again.text).toContain('is set up')
 })
 
-test('board_setup reports wrong Status options, and repair resets them keeping their IDs', async ($, on) => {
+test('board_setup reports wrong Status options, and repair resets them keeping their IDs only once James agrees to drop the others', async ($, on) => {
   const r = world({ ...built(), options: ['Backlog', 'Todo', 'In Progress', 'Done'] })
   await boot($, on, { reply: r })
   const first = await callTool($, 'board_setup', { repo: DEMO })
   expect(first.deny).toContain('Status options: Backlog, Todo, In Progress, Done')
   expect(first.deny).toContain('repair: true')
-  expect(first.deny).toContain('Repair removes these options, and their items lose their Status: Backlog.')
+  expect(first.deny).toContain('Ask James before repairing: repair removes these options, and their items lose their Status: Backlog. Only once he agrees, add dropOptions: true.')
   expect(r.seen.SetOptions).toBeUndefined()
-  const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
+  // A repair without the opt-in removes nothing, even when called directly.
+  const refused = await callTool($, 'board_setup', { repo: DEMO, repair: true })
+  expect(refused.deny).toContain('Repair removes these Status options, and their items lose their Status: Backlog.')
+  expect(refused.deny).toContain('Ask James first; only once he agrees, call board_setup again with repair: true and dropOptions: true.')
+  expect(r.seen.SetOptions).toBeUndefined()
+  const again = await callTool($, 'board_setup', { repo: DEMO, repair: true, dropOptions: true })
   expect(r.seen.SetOptions?.[0].options.map((o: any) => o.id)).toEqual([undefined, undefined, 'id-Todo', 'id-In Progress', undefined, 'id-Done'])
   expect(again.text).toContain('is set up')
+})
+
+test('board_setup repair refuses a Status field with no Done, so "Item closed" keeps the option it sets', async ($, on) => {
+  const r = world({ ...built(), options: ['Backlog', 'Shipped'] })
+  await boot($, on, { reply: r })
+  // Checked before the opt-in: renaming Shipped to Done changes what repair would drop.
+  for (const input of [{ repair: true }, { repair: true, dropOptions: true }]) {
+    const res = await callTool($, 'board_setup', { repo: DEMO, ...input })
+    expect(res.deny).toContain('no option named exactly "Done" (it has: Backlog, Shipped)')
+    expect(res.deny).toContain('rename the option "Item closed" sets to Done')
+  }
+  expect(r.seen.SetOptions).toBeUndefined()
+  expect(r.seen.DeleteWorkflow).toBeUndefined()
+})
+
+test('board_setup reports a board with no board view and wrong merge settings, and repair fixes both', async ($, on) => {
+  const r = world({ ...built(), views: ['TABLE_LAYOUT'], merged: false })
+  const w = await boot($, on, { reply: r })
+  const first = await callTool($, 'board_setup', { repo: DEMO })
+  expect(first.deny).toContain('- board view: none, must have one')
+  expect(first.deny).toContain('- mergeCommitAllowed: true, must be false')
+  expect(first.deny).toContain('- rebaseMergeAllowed: true, must be false')
+  expect(first.deny).toContain('- deleteBranchOnMerge: false, must be true')
+  expect(first.deny).toContain('- squashMergeCommitTitle: COMMIT_OR_PR_TITLE, must be PR_TITLE')
+  expect(first.deny).toContain('- squashMergeCommitMessage: COMMIT_MESSAGES, must be BLANK')
+  expect(first.deny).not.toContain('squashMergeAllowed')
+  expect(first.deny).toContain('To fix these, call board_setup again with repair: true.')
+  expect(r.seen.Merge?.[0]).toEqual({ owner: 'trackness', name: 'demo' })
+  expect(r.seen.CreateView).toBeUndefined()
+  expect(argvs(w)).not.toContain(merge(DEMO))
+  const again = await callTool($, 'board_setup', { repo: DEMO, repair: true })
+  expect(r.seen.CreateView?.[0]).toMatchObject({ layout: 'BOARD_LAYOUT' })
+  expect(argvs(w)).toContain(merge(DEMO))
+  expect(again.text).toBe('board "demo" (https://github.com/users/trackness/projects/1) is set up for trackness/demo')
+})
+
+test('board_setup does not call a board set up when its build failed at the merge settings', async ($, on) => {
+  const r = world(fresh(), { boards: [], number: 1, failOnce: 'gh repo edit' })
+  await boot($, on, { reply: r })
+  const first = await callTool($, 'board_setup', { repo: DEMO })
+  expect(first.deny).toContain('`gh repo edit trackness/demo')
+  expect(first.deny).toContain('To finish it, call board_setup again without create, with repair: true.')
+  const again = await callTool($, 'board_setup', { repo: DEMO })
+  expect(again.deny).toContain('- mergeCommitAllowed: true, must be false')
+  expect(again.deny).toContain('repair: true')
+})
+
+test('board_setup says the repo now exists when the board fails after create', async ($, on) => {
+  const r = world(fresh(), { repo: 'trackness/new', boards: [], failOnce: 'gh project create' })
+  const w = await boot($, on, { reply: r })
+  const res = await callTool($, 'board_setup', { repo: 'trackness/new', create: 'private' })
+  expect(res.deny).toContain('created trackness/new, then the board setup failed: `gh project create --owner trackness --title new --format json` failed (exit 1): gh project create refused')
+  expect(res.deny).toContain("don't pass create again")
+  expect(argvs(w).filter(a => a.startsWith('gh project link'))).toEqual([])
 })
 
 test('board_setup creates a private repo first', async ($, on) => {

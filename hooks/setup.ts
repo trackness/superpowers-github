@@ -60,7 +60,13 @@ export async function statusField(io: Io, owner: string, number: number): Promis
 }
 
 // The six in order. An option the field already has keeps its ID, so "Item closed" still finds Done.
-export async function setOptions(io: Io, field: StatusField): Promise<void> {
+// `drop`: James agreed to remove the options outside the six, and their items' Status with them.
+export async function setOptions(io: Io, field: StatusField, drop: boolean): Promise<void> {
+  const names = field.options.map(o => o.name)
+  // Without its own ID, a new Done is not the option "Item closed" sets, and this write deletes that one.
+  if (!names.includes('Done')) throw new ToolError(`The Status field has no option named exactly "Done" (it has: ${names.join(', ') || 'none'}), so repair would make a new Done and "Item closed" would set nothing. Tell James to rename the option "Item closed" sets to Done on the board (a rename keeps its ID), then call board_setup again with repair: true.`)
+  const others = names.filter(n => !(STATUSES as readonly string[]).includes(n))
+  if (others.length && !drop) throw new ToolError(`Repair removes these Status options, and their items lose their Status: ${others.join(', ')}. Ask James first; only once he agrees, call board_setup again with repair: true and dropOptions: true.`)
   // An undefined id drops out of the JSON body, and GitHub gives that option a new one.
   const options = STATUSES.map(name => ({ id: field.options.find(o => o.name === name)?.id, name, ...OPTION_STYLE[name] }))
   await graphql(io, 'SetOptions', SET_OPTIONS, { fieldId: field.fieldId, options })
@@ -81,16 +87,18 @@ export function workflowDiffs(list: Workflow[]): string[] {
 }
 
 // The API can't switch a workflow off, and a deleted one can't fire.
-export async function deleteOffWorkflows(io: Io, list: Workflow[]): Promise<string[]> {
+export async function deleteOffWorkflows(io: Io, list: Workflow[]): Promise<void> {
   const off = list.filter(w => WORKFLOWS[w.name] === false)
   for (const w of off) await graphql(io, 'DeleteWorkflow', DELETE_WORKFLOW, { workflowId: w.id })
-  return off.map(w => w.name)
+}
+
+export async function hasBoardView(io: Io, owner: string, number: number): Promise<boolean> {
+  const { views } = await project(io, 'Views', VIEWS, owner, number)
+  return views.nodes.some((v: { layout: string }) => v.layout === 'BOARD_LAYOUT')
 }
 
 export async function ensureBoardView(io: Io, owner: string, number: number, projectId: string): Promise<void> {
-  const { views } = await project(io, 'Views', VIEWS, owner, number)
-  if (views.nodes.some((v: { layout: string }) => v.layout === 'BOARD_LAYOUT')) return
-  await graphql(io, 'CreateView', CREATE_VIEW, { projectId, name: 'Board', layout: 'BOARD_LAYOUT' })
+  if (!(await hasBoardView(io, owner, number))) await graphql(io, 'CreateView', CREATE_VIEW, { projectId, name: 'Board', layout: 'BOARD_LAYOUT' })
 }
 
 // The one fix the API can't make: a must-be-on workflow that is missing or off.
