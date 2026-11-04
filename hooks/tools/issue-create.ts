@@ -1,4 +1,4 @@
-import { assertWritable, type Board, created, createIssue, failedAfter, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
+import { assertWritable, type Board, created, createIssue, failedAfter, link, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../board.ts'
 import { checkBody } from '../body.ts'
 import { type Status } from '../config.ts'
 import { ToolError } from '../gh.ts'
@@ -15,7 +15,7 @@ export const issueCreateTool: Tool = {
         body: { type: 'string' },
         repo: { type: 'string', description: '<owner>/<name>. Required without `parent`.' },
         parent: { type: 'string', description: 'The parent issue: its URL or <owner>/<repo>#<number>. Makes this a task.' },
-        blockedBy: { type: 'array', items: { type: 'integer' }, description: 'Numbers of the sibling tasks this one waits on.' },
+        blockedBy: { type: 'array', items: { type: 'integer' }, description: 'The sibling tasks this one waits on: the issue numbers (the `#n` from `issue_create` or the status listing), not the task numbers.' },
         status: { type: 'string', enum: ['Idea', 'Designed'], description: 'For an issue with no parent. Default Idea.' },
       },
       required: ['title', 'body'],
@@ -31,6 +31,7 @@ export const issueCreateTool: Tool = {
     if (parent) {
       if (!/^Task \d+: /.test(title)) throw new ToolError(`A task's title must start "Task <n>: ", not "${title}".`)
       work = await readWork(io, parent)
+      if (work.parent) throw new ToolError(`${link(work.issue)} is a task of ${link(work.parent)}: give the parent issue, ${work.parent.url}.`)
       repo = work.repo.repo
       board = work.board
     } else {
@@ -42,9 +43,15 @@ export const issueCreateTool: Tool = {
       board = requireBoard(info)
       assertWritable(info)
     }
-    if (work) assertWritable(work.repo)
+    if (work) {
+      assertWritable(work.repo)
+      // gh links --blocked-by only after creating the issue, so a stray number would leave a task outside its parent.
+      const tasks = work.tasks.map(t => t.number)
+      const strays = blockedBy.filter(n => !tasks.includes(n))
+      if (strays.length) throw new ToolError(`blockedBy takes the issue numbers of ${link(work.issue)}'s tasks, not task numbers, and these are none of them: ${strays.map(n => `#${n}`).join(', ')}. Its tasks: ${work.tasks.map(link).join(', ') || 'none yet'}. Nothing was created.`)
+    }
     const links = work ? ['--parent', String(work.issue.number), ...(blockedBy.length ? ['--blocked-by', blockedBy.join(',')] : [])] : []
-    const url = await createIssue(io, repo, board.title, title, body, links)
+    const url = await createIssue(io, repo, title, body, links)
     let step = 'reading the new issue\'s URL'
     try {
       const issue = created(url, title, body)

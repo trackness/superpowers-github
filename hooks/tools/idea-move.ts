@@ -83,7 +83,7 @@ export const ideaMoveTool: Tool = {
     const [body, copies] = [swap(issue.body), comments.map(swap)]
     sized([body, ...copies]) // a fresh URL can be longer than the one it replaced
 
-    const url = await createIssue(io, dest.repo, board.title, issue.title, body)
+    const url = await createIssue(io, dest.repo, issue.title, body)
     let step = 'reading the new issue\'s URL'
     try {
       const recreated = created(url, issue.title, body)

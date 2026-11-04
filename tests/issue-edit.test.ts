@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { issueEditTool } from '../hooks/tools/issue-edit.ts'
 import { argvs, boot, callTool, repoData, router, url } from './kit.ts'
 
 const FILES = 'https://github.com/user-attachments/files/1/idea.md'
@@ -48,6 +49,13 @@ test('issue_edit refuses an oversized body', async ($, on) => {
   const r = await callTool($, 'issue_edit', { issue: url(11), body: 'x'.repeat(65_537) })
   expect(r.deny).toContain('65,536')
   expect(w.spawned).toEqual([])
+})
+
+test('addBlockedBy and removeBlockedBy say they take issue numbers, not task numbers', () => {
+  const said = 'the issue numbers (the `#n` from `issue_create` or the status listing), not the task numbers'
+  const { properties } = issueEditTool.spec.inputSchema as any
+  expect(properties.addBlockedBy.description).toContain(said)
+  expect(properties.removeBlockedBy.description).toContain(said)
 })
 
 test('issue_edit needs at least one change', async ($, on) => {

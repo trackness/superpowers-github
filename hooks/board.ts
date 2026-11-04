@@ -14,26 +14,26 @@ export const link = (i: { number: number; title: string; url: string }) => `[#${
 // An issue and its column, as status and pr_check list them.
 export const line = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status' : 'not on the board')}`
 
-// The new issue is on the board already: `gh issue create --project` added it.
-export const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: true, blockedBy: [], blocking: [] })
+// Not on the board yet: setStatus adds it by the board's number (`gh issue create --project` picks a board by title, ignoring case, among every board James can see).
+export const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: false, blockedBy: [], blocking: [] })
 
 // A step that fails after a write that must not happen twice: name the write and the step, so nothing is written again.
 export const failedAfter = (done: string, step: string, err: unknown, again = 'create the issue') =>
   new ToolError(`${done}, then ${step} failed: ${err instanceof Error ? err.message : err}. Not retried: fix that step; don't ${again} again.`)
 
-// `gh issue create` creates the issue, then applies --project, --parent and --blocked-by, and exits non-zero without
+// `gh issue create` creates the issue, then applies --parent and --blocked-by, and exits non-zero without
 // printing the URL when one of those fails: so a failed create looks for the issue it may have made.
-export async function createIssue(io: Io, repo: string, project: string, title: string, body: string, links: string[] = []): Promise<string> {
+export async function createIssue(io: Io, repo: string, title: string, body: string, links: string[] = []): Promise<string> {
   const since = Date.now() - 2 * 60_000 // GitHub's clock may run behind ours
   try {
-    return (await gh(io, ['issue', 'create', '-R', repo, ...links, '--project', project, '--title', title, '--body-file', '-'], { input: body })).trim().split('\n').pop()!
+    return (await gh(io, ['issue', 'create', '-R', repo, ...links, '--title', title, '--body-file', '-'], { input: body })).trim().split('\n').pop()!
   } catch (err) {
-    // No --search: the search index can lag behind a new issue.
-    const made = await gh(io, ['issue', 'list', '-R', repo, '--author', '@me', '--state', 'open', '--limit', '20', '--json', 'number,title,url,createdAt'])
-      .then(out => (JSON.parse(out) as { title: string; url: string; createdAt: string }[]).find(i => i.title === title && Date.parse(i.createdAt) >= since))
+    // No --search: the search index can lag behind a new issue. The body tells this issue from another session's with the same title.
+    const made = await gh(io, ['issue', 'list', '-R', repo, '--author', '@me', '--state', 'open', '--limit', '20', '--json', 'number,title,body,url,createdAt'])
+      .then(out => (JSON.parse(out) as { title: string; body: string; url: string; createdAt: string }[]).find(i => i.title === title && i.body.trim() === body.trim() && Date.parse(i.createdAt) >= since))
       .catch(() => undefined)
-    if (made) throw failedAfter(`created ${made.url}`, "gh's own --parent/--blocked-by/--project step", err)
-    throw new ToolError(`${err instanceof Error ? err.message : err}. gh creates the issue before applying --parent, --blocked-by and --project, so it may already exist: check \`gh issue list -R ${repo} --author @me\` before calling again.`)
+    if (made) throw failedAfter(`created ${made.url}`, links.length ? "gh's own --parent/--blocked-by step" : 'gh', err)
+    throw new ToolError(`${err instanceof Error ? err.message : err}. gh creates the issue before applying --parent and --blocked-by, so it may already exist: check \`gh issue list -R ${repo} --author @me\` before calling again.`)
   }
 }
 

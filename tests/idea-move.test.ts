@@ -81,7 +81,7 @@ test('a move to a public repo recreates the issue with fresh attachments and no 
   expect(reply.seen.Comments).toEqual([{ owner: 'trackness', name: 'ideas', number: 5, after: null }, { owner: 'trackness', name: 'ideas', number: 5, after: 'c1' }])
   const created = issueCalls(w, 'create')
   expect(created).toHaveLength(1)
-  expect(created[0]!.argv).toEqual(['gh', 'issue', 'create', '-R', SITE, '--project', 'site', '--title', 'My idea', '--body-file', '-'])
+  expect(created[0]!.argv).toEqual(['gh', 'issue', 'create', '-R', SITE, '--title', 'My idea', '--body-file', '-'])
   expect(created[0]!.input).toContain(NEW_MD)
   expect(created[0]!.input).not.toContain('files/1/idea.md')
   const comments = issueCalls(w, 'comment')
@@ -94,7 +94,9 @@ test('a move to a public repo recreates the issue with fresh attachments and no 
   // gh-image's pin is checked before its first use, the download
   expect(a.indexOf('gh extension list')).toBeLessThan(a.findIndex(x => x.startsWith('gh image download')))
   expect(a.indexOf('gh extension list')).not.toBe(-1)
+  expect(a).toContain(add(4, SITE))
   expect(a).toContain(edit(4, SITE, 'Designed'))
+  expect(a.indexOf(add(4, SITE))).toBeLessThan(a.indexOf(edit(4, SITE, 'Designed')))
   const close = `gh issue close ${OLD} --comment Moved to ${url(4, SITE)}`
   expect(a).toContain(close)
   expect(a.indexOf(close)).toBe(a.length - 1)
@@ -113,13 +115,13 @@ test('a public move that fails after the create names the new issue and creates 
 })
 
 test('a public move whose create made the issue before failing names it and goes no further', async ($, on) => {
-  const list = { stdout: JSON.stringify([{ number: 4, title: 'My idea', url: url(4, SITE), createdAt: new Date().toISOString() }]) }
+  const list = { stdout: JSON.stringify([{ number: 4, title: 'My idea', body: BODY.replace(OLD_MD, NEW_MD), url: url(4, SITE), createdAt: new Date().toISOString() }]) }
   const w = await boot($, on, { reply: world({ fail: 'create', list }) })
   const r = await callTool($, 'idea_move', { issue: OLD, to: SITE })
-  expect(r.deny).toContain(`created ${url(4, SITE)}, then gh's own --parent/--blocked-by/--project step failed`)
+  expect(r.deny).toContain(`created ${url(4, SITE)}, then gh failed`)
   expect(r.deny).toContain('HTTP 502')
   expect(r.deny).toContain('Not retried')
-  expect(argvs(w)).toContain(`gh issue list -R ${SITE} --author @me --state open --limit 20 --json number,title,url,createdAt`)
+  expect(argvs(w)).toContain(`gh issue list -R ${SITE} --author @me --state open --limit 20 --json number,title,body,url,createdAt`)
   expect(issueCalls(w, 'create')).toHaveLength(1)
   expect(argvs(w).some(a => a.startsWith('gh project item-edit'))).toBe(false)
   expect(issueCalls(w, 'comment')).toEqual([])
