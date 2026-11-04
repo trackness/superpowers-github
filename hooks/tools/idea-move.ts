@@ -59,6 +59,9 @@ export const ideaMoveTool: Tool = {
         moved = await readWork(io, url)
         step = 'setting its Status'
         if (!moved.issue.onBoard || moved.issue.status !== status) await setStatus(io, moved.board, moved.issue, status)
+        // The transfer carries the ideas board's card over, so the board would go on listing the moved idea.
+        step = `removing its card from board "${work.board.title}"`
+        if (issue.itemId) await gh(io, ['project', 'item-delete', String(work.board.number), '--owner', work.board.owner, '--id', issue.itemId])
       } catch (err) {
         throw failedAfter(`transferred ${issue.url} to ${url}`, step, err, 'transfer it')
       }

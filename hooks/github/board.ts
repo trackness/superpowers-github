@@ -3,7 +3,7 @@ import { gh, graphql, type Io, ModelFacingError, parseIssue, run } from './gh'
 
 export type Board = { owner: string; number: number; title: string; url: string }
 export type RepoInfo = { repo: string; isPrivate: boolean; board?: Board }
-export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archivedItemId?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
+export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; itemId?: string; archivedItemId?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
 // `tasks`: the parent's sub-issues when the issue has a parent, else its own.
 export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[]; ownSubIssues: Item[] }
 
@@ -96,7 +96,7 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   const item = (n: any): Item => {
     const onBoard = n.projectItems.nodes.find((p: any) => p?.project?.url === board.url)
     const numbers = (c: any): number[] => c.nodes.map((i: any) => i.number)
-    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, archivedItemId: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
+    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, itemId: onBoard?.id, archivedItemId: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
   }
   // A missing issue or a PR number never gets here: GitHub answers NOT_FOUND, and graphql throws its message.
   const raw = repository.issue

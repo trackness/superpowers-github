@@ -74,6 +74,32 @@ test('a move to a private repo transfers the issue and keeps its column', async 
   expect(issueCalls(w, 'create')).toEqual([])
 })
 
+test('a private move removes the idea\'s card from the ideas board after the transfer', async ($, on) => {
+  const w = await boot($, on, { reply: world() })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: APP })
+  expect(r.deny).toBeUndefined()
+  const a = argvs(w)
+  const remove = 'gh project item-delete 1 --owner trackness --id item-5'
+  expect(a).toContain(remove)
+  expect(a.indexOf(`gh issue transfer ${OLD} ${APP}`)).toBeLessThan(a.indexOf(remove))
+})
+
+test('a private move whose transfer fails leaves the idea\'s card on the ideas board', async ($, on) => {
+  const w = await boot($, on, { reply: world({ fail: 'transfer' }) })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: APP })
+  expect(r.deny).toContain('HTTP 502')
+  expect(argvs(w).some(a => a.startsWith('gh project item-delete'))).toBe(false)
+})
+
+test('a private move whose card removal fails names the moved issue and transfers nothing twice', async ($, on) => {
+  const w = await boot($, on, { reply: world({ fail: 'item-delete' }) })
+  const r = await callTool($, 'idea_move', { issue: OLD, to: APP })
+  expect(r.deny).toContain(`transferred ${OLD} to ${url(3, APP)}, then removing its card from board "ideas" failed`)
+  expect(r.deny).toContain('HTTP 502')
+  expect(r.deny).toContain("don't transfer it again")
+  expect(issueCalls(w, 'transfer')).toHaveLength(1)
+})
+
 test('a transfer that lost something says what', async ($, on) => {
   await boot($, on, { reply: world({ moved: { body: 'Idea\n' } }) })
   const r = await callTool($, 'idea_move', { issue: OLD, to: APP })
