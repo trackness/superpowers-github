@@ -11,6 +11,9 @@ export const NOT_DONE = `only GitHub's "Item closed" workflow moves an issue to 
 
 export const link = (i: { number: number; title: string; url: string }) => `[#${i.number} ${i.title}](${i.url})`
 
+// An issue and its column, as status and pr_check list them.
+export const line = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status' : 'not on the board')}`
+
 // The new issue is on the board already: `gh issue create --project` added it.
 export const created = (url: string, title: string, body: string): Item => ({ ...parseIssue(url), title, body, closed: false, onBoard: true, blockedBy: [], blocking: [] })
 

@@ -1,9 +1,7 @@
-import { closedNotDone, type Item, link, NOT_DONE, readWork, recomputeParent, setStatus } from '../board.ts'
+import { closedNotDone, line, link, NOT_DONE, readWork, recomputeParent, setStatus } from '../board.ts'
 import { STATUSES, type Status } from '../config.ts'
 import { ToolError } from '../gh.ts'
 import { optStr, str, type Tool } from '../tools.ts'
-
-const line = (i: Item) => `${link(i)} — ${i.status ?? (i.onBoard ? 'no Status' : 'not on the board')}`
 
 export const statusTool: Tool = {
   spec: {

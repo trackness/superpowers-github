@@ -116,10 +116,11 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
   return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.parent ? [] : tasks), parent } } }
 }
 
-// The answer to op `ClosingRefs`: a PR with this body that closes these issues of `repo`.
-export function closingData(o: { body: string; closes: number[]; repo?: string }): unknown {
+// The answer to op `ClosingRefs`: a PR into `base` (default main, the repo's default branch) with this body that closes these issues of `repo`.
+export function closingData(o: { body: string; closes: number[]; repo?: string; base?: string }): unknown {
   const nameWithOwner = o.repo ?? DEMO
-  return { repository: { pullRequest: { body: o.body, closingIssuesReferences: { nodes: o.closes.map(number => ({ number, repository: { nameWithOwner } })) } } } }
+  const pullRequest = { body: o.body, baseRefName: o.base ?? 'main', closingIssuesReferences: { nodes: o.closes.map(number => ({ number, repository: { nameWithOwner } })) } }
+  return { repository: { defaultBranchRef: { name: 'main' }, pullRequest } }
 }
 
 // One page of the answer to op `Items`; another page follows when `endCursor` is given.

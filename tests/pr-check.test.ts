@@ -12,10 +12,26 @@ const both = (a: ItemSpec['status'], b: ItemSpec['status']) => [{ number: 11, st
 test('the gate names every task that is not In Review', async ($, on) => {
   await boot($, on, { reply: world({ number: 10, status: 'In Progress' }, both('In Review', 'In Progress')) })
   const r = await callTool($, 'pr_check', { parent: url(10) })
-  expect(r.deny).toContain('No PR: these tasks are not In Review:')
-  expect(r.deny).toContain('[#12 ')
-  expect(r.deny).toContain('In Progress')
+  expect(r.deny).toContain('No PR: these tasks are neither In Review nor Done:')
+  expect(r.deny).toContain(`\n- [#12 Task 12: T12](${url(12)}) — In Progress`)
   expect(r.deny).not.toContain(`(${url(11)})`)
+})
+
+test('the gate takes a task that is already Done', async ($, on) => {
+  await boot($, on, { reply: world({ number: 10, status: 'In Review' }, both('In Review', 'Done')) })
+  const r = await callTool($, 'pr_check', { parent: url(10) })
+  expect(r.deny).toBeUndefined()
+  expect(r.text).toContain('Closes #10\nCloses #11\nCloses #12')
+})
+
+test('pr_check refuses a task given as the parent, and names the parent', async ($, on) => {
+  const work = workData({ issue: { number: 11, status: 'In Review' }, parent: { number: 10, status: 'In Review' }, tasks: both('In Review', 'In Review') })
+  const closing = closingData({ body: HEADING, closes: [11, 12] })
+  await boot($, on, { reply: router({ graphql: { Repo: () => repoData({}), Work: () => work, ClosingRefs: () => closing } }) })
+  for (const pr of [undefined, 7]) {
+    const r = await callTool($, 'pr_check', { parent: url(11), pr })
+    expect(r.deny).toContain(`is a task of [#10 Task 10: T10](${url(10)}): give the parent issue, ${url(10)}`)
+  }
 })
 
 test('the gate passes with the Closes lines for the parent and every task', async ($, on) => {
@@ -64,6 +80,15 @@ test('a PR closing an extra issue names it', async ($, on) => {
   const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
   expect(r.deny).toContain('Extra: #99')
   expect(r.deny).not.toContain('Missing:')
+})
+
+test('a PR into a branch other than the default is refused: GitHub would close nothing', async ($, on) => {
+  const w = world({ number: 10, status: 'In Review' }, both('In Review', 'In Review'), closingData({ body: HEADING, closes: [10, 11, 12], base: 'develop' }))
+  await boot($, on, { reply: w })
+  const r = await callTool($, 'pr_check', { parent: url(10), pr: 7 })
+  expect(r.deny).toContain('PR #7 targets develop, not the default branch main')
+  expect(r.deny).toContain('`gh pr edit 7 --base main`')
+  expect(r.deny).toContain('tell James')
 })
 
 test('a PR for a planned run must carry the plan-changes section', async ($, on) => {
