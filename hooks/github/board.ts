@@ -111,10 +111,19 @@ export function deriveParentStatus(tasks: (Status | undefined)[]): Status {
   return 'In Progress'
 }
 
+// GitHub's words when it refuses an add, as it did on a board created moments before: "Please try again."
+const TEMPORARY_CONFLICT = 'Your attempt to move this item created a temporary conflict. Please try again.'
+
 export async function setStatus(io: Io, board: Board, issue: Item, status: Status): Promise<void> {
   if (status === 'Done') throw new ModelFacingError(NOT_DONE)
   const item = [String(board.number), '--owner', board.owner, '--url', issue.url]
-  if (!issue.onBoard) await gh(io, ['project', 'item-add', ...item])
+  const add = () => gh(io, ['project', 'item-add', ...item])
+  // Adding an issue that is already on the board adds nothing, so one retry can't make a second card.
+  if (!issue.onBoard)
+    await add().catch(err => {
+      if (!(err instanceof Error && err.message.includes(TEMPORARY_CONFLICT))) throw err
+      return add()
+    })
   // An archived card stays hidden on the board and from work_list, so a move brings it back.
   if (issue.archivedItemId) await gh(io, ['project', 'item-archive', String(board.number), '--owner', board.owner, '--id', issue.archivedItemId, '--undo'])
   await gh(io, ['project', 'item-edit', ...item, '--field', 'Status', '--value', status])
