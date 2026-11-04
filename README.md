@@ -24,7 +24,7 @@ No permission allow rule is needed: when no settings rule decides a call of one 
 
 - Start a session that runs the mod from your clone: from inside it, `claude --plugin-dir .`; from anywhere else, give the clone's path, for example `claude --plugin-dir ~/src/superpowers-github`. It overrides an installed copy for that session only, and reloads the mod when a file is saved.
 - That session also writes this Claude Code version's types into `.claude-plugin/types/` (which keeps itself out of git), and `tsconfig.json` extends them. Until a session like that has loaded the mod once, the folder doesn't exist, and your editor and `tsc` report `TS2307: Cannot find module 'claude-code'` on every file. Each later session rewrites the types for the version it runs.
-- Once a change is merged, `claude plugin update superpowers-github@superpowers-github` brings it to the installed copy; restart Claude Code to apply it.
+- A release is a merge that also raises `version` in `.claude-plugin/plugin.json`: `claude plugin update` compares versions, and skips a merge whose version is unchanged. After the release, `claude plugin marketplace update superpowers-github`, then `claude plugin update superpowers-github@superpowers-github`, bring it to the installed copy; restart Claude Code to apply it.
 
 ## When the upgrade guard blocks a skill
 
