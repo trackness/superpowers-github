@@ -1,9 +1,9 @@
-import { IDEAS_REPO, type Status, TOOL_PREFIX } from '../config'
+import { CLOSED_NOT_DONE_GRACE_MS, IDEAS_REPO, type Status, TOOL_PREFIX } from '../config'
 import { gh, graphql, type Io, ModelFacingError, parseIssue, run } from './gh'
 
 export type Board = { owner: string; number: number; title: string; url: string }
 export type RepoInfo = { repo: string; isPrivate: boolean; board?: Board }
-export type Item = { number: number; url: string; title: string; closed: boolean; onBoard: boolean; archivedItemId?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
+export type Item = { number: number; url: string; title: string; closed: boolean; closedAt?: string; onBoard: boolean; itemId?: string; archivedItemId?: string; status?: Status; body: string; blockedBy: number[]; blocking: number[] }
 // `tasks`: the parent's sub-issues when the issue has a parent, else its own.
 export type Work = { repo: RepoInfo; board: Board; issue: Item; parent?: Item; tasks: Item[]; ownSubIssues: Item[] }
 
@@ -46,7 +46,7 @@ const REPO = `query Repo($owner: String!, $name: String!) {
 
 // GitHub allows at most 100 sub-issues per parent, so one page holds every task.
 const WORK = `fragment Item on Issue {
-  number url title closed body
+  number url title closed closedAt body
   blockedBy(first: 100) { nodes { number } }
   blocking(first: 100) { nodes { number } }
   projectItems(first: 100) { nodes { id isArchived project { url } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } }
@@ -96,7 +96,7 @@ export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   const item = (n: any): Item => {
     const onBoard = n.projectItems.nodes.find((p: any) => p?.project?.url === board.url)
     const numbers = (c: any): number[] => c.nodes.map((i: any) => i.number)
-    return { number: n.number, url: n.url, title: n.title, closed: n.closed, onBoard: !!onBoard, archivedItemId: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
+    return { number: n.number, url: n.url, title: n.title, closed: n.closed, closedAt: n.closedAt ?? undefined, onBoard: !!onBoard, itemId: onBoard?.id, archivedItemId: onBoard?.isArchived ? onBoard.id : undefined, status: onBoard?.status?.name, body: n.body, blockedBy: numbers(n.blockedBy), blocking: numbers(n.blocking) }
   }
   // A missing issue or a PR number never gets here: GitHub answers NOT_FOUND, and graphql throws its message.
   const raw = repository.issue
@@ -111,10 +111,19 @@ export function deriveParentStatus(tasks: (Status | undefined)[]): Status {
   return 'In Progress'
 }
 
+// GitHub's words when it refuses an add, as it did on a board created moments before: "Please try again."
+const TEMPORARY_CONFLICT = 'Your attempt to move this item created a temporary conflict. Please try again.'
+
 export async function setStatus(io: Io, board: Board, issue: Item, status: Status): Promise<void> {
   if (status === 'Done') throw new ModelFacingError(NOT_DONE)
   const item = [String(board.number), '--owner', board.owner, '--url', issue.url]
-  if (!issue.onBoard) await gh(io, ['project', 'item-add', ...item])
+  const add = () => gh(io, ['project', 'item-add', ...item])
+  // Adding an issue that is already on the board adds nothing, so one retry can't make a second card.
+  if (!issue.onBoard)
+    await add().catch(err => {
+      if (!(err instanceof Error && err.message.includes(TEMPORARY_CONFLICT))) throw err
+      return add()
+    })
   // An archived card stays hidden on the board and from work_list, so a move brings it back.
   if (issue.archivedItemId) await gh(io, ['project', 'item-archive', String(board.number), '--owner', board.owner, '--id', issue.archivedItemId, '--undo'])
   await gh(io, ['project', 'item-edit', ...item, '--field', 'Status', '--value', status])
@@ -135,6 +144,7 @@ export function closedNotDone(work: Work): string[] {
   const { title, url } = work.board
   return [work.parent ?? work.issue, ...work.tasks]
     .filter(i => i.closed && i.onBoard && i.status !== 'Done') // no workflow moves an issue that is not on the board
+    .filter(i => Date.now() - Date.parse(i.closedAt!) > CLOSED_NOT_DONE_GRACE_MS)
     .map(i => `#${i.number} is closed but not in Done on board "${title}" (${url}): "Item closed" isn't moving closed issues. Open the board's Workflows and turn on "Item closed" with Status = Done.`)
 }
 

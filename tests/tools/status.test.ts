@@ -85,11 +85,18 @@ test('status adds an issue that is not on the board before setting it', async ($
   expect(argvs(w).indexOf(add(10))).toBeLessThan(argvs(w).indexOf(edit(10, 'Designed')))
 })
 
-test('status flags a closed issue that is not in Done', async ($, on) => {
-  await boot($, on, { reply: world(task11({ number: 10, status: 'In Review' }, [{ number: 11, status: 'In Review' }, { number: 12, status: 'In Review', closed: true }])) })
+test('status flags an issue closed long ago that is not in Done', async ($, on) => {
+  await boot($, on, { reply: world(task11({ number: 10, status: 'In Review' }, [{ number: 11, status: 'In Review' }, { number: 12, status: 'In Review', closed: true, closedAt: '2020-01-01T00:00:00Z' }])) })
   const r = await callTool($, 'status', { issue: url(11) })
   expect(r.text).toContain('#12 is closed but not in Done')
   expect(r.text).toContain('"Item closed"')
+})
+
+test('status gives "Item closed" time to move an issue closed a moment ago', async ($, on) => {
+  await boot($, on, { reply: world(task11({ number: 10, status: 'In Review' }, [{ number: 11, status: 'In Review' }, { number: 12, status: 'In Review', closed: true, closedAt: new Date().toISOString() }])) })
+  const r = await callTool($, 'status', { issue: url(11) })
+  expect(r.text).toContain(`[#12 Task 12: T12](${url(12)}) — In Review`)
+  expect(r.text).not.toContain('"Item closed"')
 })
 
 test('status does not blame "Item closed" for a closed issue that is not on the board', async ($, on) => {

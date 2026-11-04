@@ -1,4 +1,4 @@
-import { STATUSES, type Status } from '../config'
+import { CLOSED_NOT_DONE_GRACE_MS, STATUSES, type Status } from '../config'
 import { closedNotDone, link, linkWithColumn, NOT_DONE, readWork, recomputeParent, setStatus } from '../github/board'
 import { ModelFacingError } from '../github/gh'
 import { optStr, str, type Tool } from './engine'
@@ -6,7 +6,7 @@ import { optStr, str, type Tool } from './engine'
 export const statusTool: Tool = {
   spec: {
     name: 'status',
-    description: `Reads or moves a piece of work on its repo's board. With only \`issue\`, returns the parent and each of its tasks as \`[#n title](url) — <Status>\` lines. With \`status\`, moves a task and then recomputes its parent's column from its tasks, or moves a parent that has no tasks (an idea, a small change). A parent with tasks is refused: its column is derived from its tasks. A task is refused Idea and Designed. Done is refused: ${NOT_DONE}. Also names any closed issue that is not in Done, which means the board's "Item closed" workflow is off.`,
+    description: `Reads or moves a piece of work on its repo's board. With only \`issue\`, returns the parent and each of its tasks as \`[#n title](url) — <Status>\` lines. With \`status\`, moves a task and then recomputes its parent's column from its tasks, or moves a parent that has no tasks (an idea, a small change). A parent with tasks is refused: its column is derived from its tasks. A task is refused Idea and Designed. Done is refused: ${NOT_DONE}. Also names any issue closed over ${CLOSED_NOT_DONE_GRACE_MS / 60_000} minutes ago that is not in Done, which means the board's "Item closed" workflow is off.`,
     inputSchema: {
       type: 'object',
       properties: {

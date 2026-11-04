@@ -6,12 +6,13 @@ const edit = (n: number, s: string, board = 1) => `gh project item-edit ${board}
 const add = (n: number, board = 1) => `gh project item-add ${board} --owner trackness --url ${url(n)}`
 const creates = (w: World) => w.spawned.filter(s => s.argv[2] === 'create')
 
-const world = (o: { repo?: unknown; work?: unknown; fail?: boolean; create?: Reply; list?: Reply } = {}) =>
+// `adds`: the replies to the first `gh project item-add` calls, in order; every later one succeeds.
+const world = (o: { repo?: unknown; work?: unknown; fail?: boolean; create?: Reply; list?: Reply; adds?: Reply[] } = {}) =>
   router({
     graphql: { Repo: () => o.repo ?? repoData({}), Work: () => o.work ?? workData({ issue: { number: 10, status: 'Designed' }, tasks: [{ number: 11 }, { number: 12 }] }) },
     cli: s =>
       s.argv[1] === 'issue' ? (s.argv[2] === 'list' ? (o.list ?? { stdout: '[]' }) : (o.create ?? { stdout: url(13) + '\n' }))
-      : s.argv[1] === 'project' ? (o.fail && s.argv[2] === 'item-edit' ? { code: 1, stderr: 'HTTP 502' } : {})
+      : s.argv[1] === 'project' ? ((s.argv[2] === 'item-add' && o.adds?.shift()) || (o.fail && s.argv[2] === 'item-edit' ? { code: 1, stderr: 'HTTP 502' } : {}))
       : undefined,
   })
 
@@ -111,6 +112,33 @@ test('issue_create reports the created issue when a later step fails', async ($,
   expect(r.deny).toContain('HTTP 502')
   expect(r.deny).toContain('Not retried')
   expect(creates(w)).toHaveLength(1)
+})
+
+// gh's stderr when GitHub refused the e2e run's first item-add on a board created moments before.
+const CONFLICT: Reply = { code: 1, stderr: 'GraphQL: Your attempt to move this item created a temporary conflict. Please try again. (addProjectV2ItemById)' }
+const projectCalls = (w: World) => argvs(w).filter(a => a.startsWith('gh project'))
+
+test('issue_create adds the new issue to the board once more when GitHub answers with a temporary conflict', async ($, on) => {
+  const w = await boot($, on, { reply: world({ adds: [CONFLICT] }) })
+  const r = await callTool($, 'issue_create', idea('b'))
+  expect(r.text).toBe(`Created [#13 Idea](${url(13)}) in Idea.`)
+  expect(projectCalls(w)).toEqual([add(13), add(13), edit(13, 'Idea')])
+})
+
+test('issue_create retries a temporary conflict only once, and then names the created issue', async ($, on) => {
+  const w = await boot($, on, { reply: world({ adds: [CONFLICT, CONFLICT] }) })
+  const r = await callTool($, 'issue_create', idea('b'))
+  expect(r.deny).toContain(`created ${url(13)}, then setting its Status failed`)
+  expect(r.deny).toContain('temporary conflict')
+  expect(projectCalls(w)).toEqual([add(13), add(13)])
+})
+
+test('issue_create does not retry any other failure to add the new issue to the board', async ($, on) => {
+  const w = await boot($, on, { reply: world({ adds: [{ code: 1, stderr: 'HTTP 502' }] }) })
+  const r = await callTool($, 'issue_create', idea('b'))
+  expect(r.deny).toContain(`created ${url(13)}, then setting its Status failed`)
+  expect(r.deny).toContain('HTTP 502')
+  expect(projectCalls(w)).toEqual([add(13)])
 })
 
 test('issue_create names the issue gh created before its own later step failed', async ($, on) => {

@@ -46,4 +46,4 @@ To fix the mod, follow the block's own steps:
 
 ## License
 
-superpowers' text quoted in `hooks/patches/` and copied in `tests/fixtures/` is MIT, © Jesse Vincent; see `tests/fixtures/LICENSE-superpowers`.
+MIT, © 2026 trackness; see [LICENSE](LICENSE). superpowers' text quoted in `hooks/patches/` and copied in `tests/fixtures/` stays under its own MIT notice, © Jesse Vincent; see [tests/fixtures/LICENSE-superpowers](tests/fixtures/LICENSE-superpowers).
