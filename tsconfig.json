@@ -1,0 +1,4 @@
+// Claude Code writes .claude-plugin/types/ when a `claude --plugin-dir .` session, started from inside your clone, loads the mod (README, "Develop"); until then every import of 'claude-code' fails with TS2307.
+{
+  "extends": "./.claude-plugin/types/tsconfig.json"
+}
