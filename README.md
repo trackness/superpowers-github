@@ -32,14 +32,14 @@ Every patch replaces exact superpowers 7.0.0 text. When an anchor is missing, or
 
 To fix the mod, follow the block's own steps:
 
-1. In a session started with `claude --plugin-dir .` from inside your clone, run `node tests/fixtures/make-fixture.mjs <superpowers root>` from the clone (the installed superpowers folder, which the block names) to generate the new version's fixture.
-2. Point the patch tests at the new fixture, and set `PATCHED_FOR` in `hooks/config.ts` to the new version.
+1. In a session started with `claude --plugin-dir .` from inside your clone, run `node tests/fixtures/make-fixture.mjs <superpowers root>` from the clone (the installed superpowers folder, which the block names) to regenerate the fixture, `tests/fixtures/superpowers.ts`, from the new version.
+2. Set `PATCHED_FOR` in `hooks/config.ts` to the new version: the fixture test fails until the two agree.
 3. Update each failed patch until `claude plugin test <path to this repo>` passes.
 4. Run `/reload-plugins`.
 
 ## Tests
 
-`claude plugin test <path to this repo>` runs the suite with every command faked; it does not type-check, so run `tsc -p <path to this repo>` too. The fixture test checks only the version, the five skill names and three known passages. To check that the fixture is still superpowers 7.0.0's text verbatim, regenerate it from the 7.0.0 root, then diff:
+`claude plugin test <path to this repo>` runs the suite with every command faked; it does not type-check, so run `tsc -p <path to this repo>` too. The fixture test checks only that the fixture's version is `PATCHED_FOR`, the five skill names and three known passages. To check that the fixture is still superpowers 7.0.0's text verbatim, regenerate it from the 7.0.0 root, then diff:
 
 - `node <path to this repo>/tests/fixtures/make-fixture.mjs ~/.claude/plugins/cache/claude-plugins-official/superpowers/7.0.0`
 - `git -C <path to this repo> diff --exit-code tests/fixtures`

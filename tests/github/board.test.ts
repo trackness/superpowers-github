@@ -17,9 +17,16 @@ test('assertWritable refuses only a public ideas repo', () => {
   expect(() => assertWritable({ repo: 'trackness/demo', isPrivate: false })).not.toThrow()
 })
 
+test('a read of the work is one GraphQL call, which brings the repo and its board too', async ($, on) => {
+  const reply = router({ graphql: { Repo: () => repoData({}), Work: () => workData({ issue: { number: 10, status: 'Idea' } }) } })
+  await boot($, on, { reply })
+  expect((await callTool($, 'status', { issue: url(10) })).deny).toBeUndefined()
+  expect(Object.keys(reply.seen)).toEqual(['Work'])
+})
+
 test('every tool that writes refuses a public ideas repo, by GitHub\'s spelling of its name, before writing anything', async ($, on) => {
   const IDEAS = 'trackness/ideas'
-  const reply = router({ graphql: { Repo: () => repoData({ repo: IDEAS, isPrivate: false }), Work: () => workData({ issue: { number: 5, status: 'Idea' }, repo: IDEAS }) } })
+  const reply = router({ graphql: { Repo: () => repoData({ repo: IDEAS, isPrivate: false }), Work: () => workData({ issue: { number: 5, status: 'Idea' }, repo: IDEAS, isPrivate: false }) } })
   const w = await boot($, on, { reply })
   const issue = url(5, IDEAS)
   const calls: [string, Record<string, unknown>][] = [

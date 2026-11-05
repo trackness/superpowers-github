@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { PATCHED_FOR, PLUGIN } from '../config'
 
 export type Patch = { id: string; find: string; replace: string; count?: number; ifMissing: string }
-export type PatchSet = { skill: string; patches: Patch[]; replaceWith?: string }
+export type PatchSet = { skill: string; patches: Patch[] }
 export type Failure = { id: string; expected: string; count: number; found: number; nearby?: string; ifMissing: string }
 
 const occurrences = (text: string, find: string) => text.split(find).length - 1
@@ -27,7 +27,7 @@ export function applyPatches(text: string, set: PatchSet): { text: string; failu
     }
     text = text.split(p.find).join(p.replace) // split/join: `replace` is literal, no `$&` expansion
   }
-  return { text: failures.length === 0 && set.replaceWith !== undefined ? set.replaceWith : text, failures }
+  return { text, failures }
 }
 
 // Four backticks: some anchors hold three-backtick fences of their own, and none holds four.
@@ -42,7 +42,7 @@ export function blockText(a: { skill: string; version: string; root?: string; pl
     `${PLUGIN} blocked ${a.skill}: superpowers ${a.version} no longer matches the text its patches were written for (${PATCHED_FOR}).`,
     'Stop. Do not follow this skill. Tell your human partner:',
     ...a.failures.map(f => `${f.id}\nExpected (${f.count} time(s)):\n${fence(f.expected)}\nWhat is there now:\n${what(f)}`),
-    `Remediation (offer to carry it out): run \`node ${a.pluginRoot}/tests/fixtures/make-fixture.mjs ${a.root ?? '<root>'}\`, point the patch tests at the new fixture, set \`PATCHED_FOR\` in \`${a.pluginRoot}/hooks/config.ts\` to the new version, update each failed patch until \`claude plugin test ${a.pluginRoot}\` passes, then \`/reload-plugins\`.`,
+    `Remediation (offer to carry it out): run \`node ${a.pluginRoot}/tests/fixtures/make-fixture.mjs ${a.root ?? '<root>'}\`, set \`PATCHED_FOR\` in \`${a.pluginRoot}/hooks/config.ts\` to the new version, update each failed patch until \`claude plugin test ${a.pluginRoot}\` passes, then \`/reload-plugins\`.`,
     'Or work around it: follow the skill with only the patches that applied. What goes wrong:',
     ...a.failures.map(f => `- ${f.id}: ${f.ifMissing}`),
     'If your human partner chooses the workaround, follow this text:',
@@ -53,7 +53,8 @@ export function blockText(a: { skill: string; version: string; root?: string; pl
 export function registerPatches(on: On, sets: PatchSet[]): void {
   for (const set of sets) {
     on('skill.prompt', { skill: set.skill }, async ($, e, next) => {
-      const root = e.path?.includes('/skills/') ? e.path.slice(0, e.path.indexOf('/skills/')) : undefined
+      // The last skills/: the one in <root>/skills/<name>/SKILL.md, whatever the folders above it are called.
+      const root = e.path?.includes('/skills/') ? e.path.slice(0, e.path.lastIndexOf('/skills/')) : undefined
       let version = 'unknown'
       if (root) {
         try { version = JSON.parse(await $.fs.read(`${root}/.claude-plugin/plugin.json`)).version ?? 'unknown' } catch {}

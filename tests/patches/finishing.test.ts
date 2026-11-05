@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { applyPatches } from '../../hooks/patches/engine'
 import { finishing } from '../../hooks/patches/finishing'
-import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { SKILLS } from '../fixtures/superpowers'
 import { boot, router } from '../kit'
 
 const ABSENT = [

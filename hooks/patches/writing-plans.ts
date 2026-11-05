@@ -1,4 +1,4 @@
-import { TOOL_PREFIX as P } from '../config'
+import { BODY_LIMIT, IDEAS_REPO, TOOL_PREFIX as P } from '../config'
 import type { Patch, PatchSet } from './engine'
 
 const patches: Patch[] = [
@@ -7,12 +7,12 @@ const patches: Patch[] = [
     find:'**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`\n- (User preferences for plan location override this default)',
     replace:`**Where the plan goes:** the parent issue, plus one sub-issue per task. Never write a plan file.
 
-- **Which parent:** when this skill starts on its own, first call \`${P}work_list\` with status \`Designed\`, and inside a repo also with \`repo\` \`trackness/ideas\`, and ask your human partner which parent issue the plan is for, listing each as a link.
-- **A repo is needed:** when the parent issue is still in \`trackness/ideas\`, first ask your human partner which repo it belongs in: an existing repo, or a new one. For a new one, get its name and visibility from your human partner, then call \`${P}board_setup\` with \`create\` set to that visibility. Then call \`${P}idea_move\` with the issue and that repo, and write the plan on the moved issue.
+- **Which parent:** when this skill starts on its own, first call \`${P}work_list\` with status \`Designed\`, and inside a repo also with \`repo\` \`${IDEAS_REPO}\`, and ask your human partner which parent issue the plan is for, listing each as a link.
+- **A repo is needed:** when the parent issue is still in \`${IDEAS_REPO}\`, first ask your human partner which repo it belongs in: an existing repo, or a new one. For a new one, get its name and visibility from your human partner, then call \`${P}board_setup\` with \`create\` set to that visibility. Then call \`${P}idea_move\` with the issue and that repo, and write the plan on the moved issue.
 - **Order:** draft the whole plan in the conversation and run Self-Review checks 1-5 first; then write the parent's \`## Plan\` and create the sub-issues; then run check 6.
 - **The non-task content** (Goal, Architecture, Tech Stack, Global Constraints, Review Focus) goes into the parent's body under \`## Plan\`: call \`${P}issue_edit\` with \`appendBody\` set to the \`## Plan\` section, which adds it after the design and leaves the rest of the body as it is. Never pass \`body\` for this: it replaces the whole body. There is no title line, no agentic-workers line and no Spec line, because the design is in the same body.
 - **Each task** becomes a sub-issue through \`${P}issue_create\`, in plan order, with the parent, the title \`Task N: <name>\`, the task's full text as its body, and \`blockedBy\` listing the issue numbers (the \`#n\` from \`${P}issue_create\` or the status listing), not the task numbers, of the earlier tasks it consumes from (Interfaces → Consumes) or whose created files it modifies.
-- **Size:** one task's text must fit one issue, 65,536 characters. When the tool refuses one, rewrite that task to fit; never split or truncate it.`,
+- **Size:** one task's text must fit one issue, ${BODY_LIMIT.toLocaleString('en-US')} characters. When the tool refuses one, rewrite that task to fit; never split or truncate it.`,
     ifMissing:'the plan is saved to docs/superpowers/plans/ on disk, and no sub-issues are created',
   },
   {

@@ -1,10 +1,10 @@
 import { expect, test } from 'claude-code/testing'
-import { boot, callTool, closingRefsData, type ItemSpec, repoData, router, url, workData } from '../kit'
+import { boot, callTool, closingRefsData, type ItemSpec, router, url, workData } from '../kit'
 
 const HEADING = '## Plan changes made during the run'
 
 const world = (parent: ItemSpec, tasks: ItemSpec[], closing?: unknown) =>
-  router({ graphql: { Repo: () => repoData({}), Work: () => workData({ issue: parent, tasks }), ClosingRefs: () => closing } })
+  router({ graphql: { Work:() => workData({ issue: parent, tasks }), ClosingRefs: () => closing } })
 
 const both = (a: ItemSpec['status'], b: ItemSpec['status']) => [{ number: 11, status: a }, { number: 12, status: b }]
 
@@ -26,7 +26,7 @@ test('the gate takes a task that is already Done', async ($, on) => {
 test('pr_check refuses a task given as the parent, and names the parent', async ($, on) => {
   const work = workData({ issue: { number: 11, status: 'In Review' }, parent: { number: 10, status: 'In Review' }, tasks: both('In Review', 'In Review') })
   const closing = closingRefsData({ body: HEADING, closes: [11, 12] })
-  await boot($, on, { reply: router({ graphql: { Repo: () => repoData({}), Work: () => work, ClosingRefs: () => closing } }) })
+  await boot($, on, { reply: router({ graphql: { Work:() => work, ClosingRefs: () => closing } }) })
   for (const pr of [undefined, 7]) {
     const r = await callTool($, 'pr_check', { parent: url(11), pr })
     expect(r.deny).toContain(`is a task of [#10 Task 10: T10](${url(10)}): give the parent issue, ${url(10)}`)

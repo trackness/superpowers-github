@@ -1,6 +1,6 @@
 {
   "name": "superpowers-github",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Keeps superpowers' ideas, designs, plans and tasks in GitHub issues on a per-repo board.",
   "author": { "name": "trackness" },
   "license": "MIT"

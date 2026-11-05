@@ -11,13 +11,18 @@ export function parseRefs(text: string): Ref[] {
   return [...text.matchAll(re)].map(m => ({ markdown: m[0], name: m[1]!, url: m[2]! }))
 }
 
+// Once per tool call: each call builds its own Io, so the next call checks afresh.
+const checked = new WeakSet<Io>()
+
 export async function checkGhImage(io: Io): Promise<void> {
+  if (checked.has(io)) return
   const out = await runOk(io, ['gh', 'extension', 'list'])
   // Whole fields, so v1.4.10 is not taken for v1.4.1.
   if (!out.split('\n').some(l => { const [, repo, version] = l.split('\t'); return repo?.trim() === GH_IMAGE.repo && version?.trim() === GH_IMAGE.version })) {
     // An installed gh-image takes no --pin from a second install (gh says "already installed"), so it goes first.
     throw new ModelFacingError(`gh-image ${GH_IMAGE.version} is not installed. Ask your human partner to run \`gh extension remove gh-image\` (if any version is installed), then: gh extension install ${GH_IMAGE.repo} --pin ${GH_IMAGE.version}`)
   }
+  checked.add(io)
 }
 
 export async function upload(io: Io, file: string, repo: string): Promise<Ref> {

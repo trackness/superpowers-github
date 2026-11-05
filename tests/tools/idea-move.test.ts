@@ -37,7 +37,7 @@ const world = (o: { idea?: Partial<ItemSpec>; parent?: ItemSpec; own?: ItemSpec[
       Work: v =>
         v.name === 'ideas'
           ? workData({ issue: { number: 5, status: 'Designed', title: 'My idea', body: BODY, ...o.idea }, parent: o.parent, own: o.own, tasks: o.tasks, repo: IDEAS })
-          : workData({ issue: { number: 3, title: 'My idea', body: BODY, onBoard: false, ...o.moved }, repo: APP, board: 2 }),
+          : workData({ issue: { number: 3, title: 'My idea', body: BODY, onBoard: false, ...o.moved }, repo: APP, boards: ['notes', 'app'], board: 2 }),
       Comments: v => (o.comments ? commentsPage(o.comments) : v.after === 'c1' ? commentsPage([`second ![s.png](${OLD_PNG})`]) : commentsPage(['first'], 'c1')),
     },
     cli: (s: Spawned) => {
@@ -153,6 +153,14 @@ test('a move to a public repo recreates the issue with fresh attachments and no 
   const close = `gh issue close ${OLD} --comment Moved to ${url(4, SITE)}`
   expect(a).toContain(close)
   expect(a.indexOf(close)).toBe(a.length - 1)
+})
+
+test('a public move checks gh-image once, however many attachments it moves', async ($, on) => {
+  const reply = world()
+  const w = await boot($, on, { reply, files: reply.files })
+  expect((await callTool($, 'idea_move', { issue: OLD, to: SITE })).deny).toBeUndefined()
+  expect(uploads(w)).toHaveLength(2)
+  expect(argvs(w).filter(a => a === 'gh extension list')).toHaveLength(1)
 })
 
 test('a public move uploads each attachment under the name gh-image gives it, not its link text', async ($, on) => {

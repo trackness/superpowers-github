@@ -36,11 +36,13 @@ export async function createIssue(io: Io, repo: string, title: string, body: str
 }
 
 // shortcut: reads the first 100 boards linked to the repo; page through them if a repo ever links more.
+const REPO_FIELDS = `nameWithOwner
+    isPrivate
+    projectsV2(first: 100) { nodes { number title url owner { ... on User { login } ... on Organization { login } } } }`
+
 const REPO = `query Repo($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
-    nameWithOwner
-    isPrivate
-    projectsV2(first: 100) { nodes { number title url owner { ... on User { login } ... on Organization { login } } } }
+    ${REPO_FIELDS}
   }
 }`
 
@@ -53,6 +55,7 @@ const WORK = `fragment Item on Issue {
 }
 query Work($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
+    ${REPO_FIELDS}
     issue(number: $number) {
       ...Item
       subIssues(first: 100) { nodes { ...Item } }
@@ -67,13 +70,16 @@ export function splitRepo(repo: string): [owner: string, name: string] {
   return [m[1]!, m[2]!]
 }
 
-export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
-  const [owner, name] = splitRepo(repo)
-  const { repository: r } = await graphql<any>(io, 'Repo', REPO, { owner, name })
+function toRepoInfo(r: any): RepoInfo {
   // GitHub's spelling of the name, so a differently cased input still finds the board and the ideas repo.
   const title = r.nameWithOwner.split('/')[1]
   const p = r.projectsV2.nodes.find((p: any) => p?.title === title)
   return { repo: r.nameWithOwner, isPrivate: r.isPrivate, board: p && { owner: p.owner.login, number: p.number, title: p.title, url: p.url } }
+}
+
+export async function repoInfo(io: Io, repo: string): Promise<RepoInfo> {
+  const [owner, name] = splitRepo(repo)
+  return toRepoInfo((await graphql<any>(io, 'Repo', REPO, { owner, name })).repository)
 }
 
 // For a tool that must work without a board, which readWork requires.
@@ -90,9 +96,10 @@ export function assertWritable(info: RepoInfo): void {
 
 export async function readWork(io: Io, issueUrl: string): Promise<Work> {
   const ref = parseIssue(issueUrl)
-  const repo = await repoInfo(io, ref.repo)
-  const board = requireBoard(repo)
+  // One call for the repo, its board and the work: each gh call is a process and a round trip.
   const { repository } = await graphql<any>(io, 'Work', WORK, { owner: ref.owner, name: ref.name, number: ref.number })
+  const repo = toRepoInfo(repository)
+  const board = requireBoard(repo)
   const item = (n: any): Item => {
     const onBoard = n.projectItems.nodes.find((p: any) => p?.project?.url === board.url)
     const numbers = (c: any): number[] => c.nodes.map((i: any) => i.number)

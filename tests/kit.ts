@@ -9,8 +9,8 @@ export const url = (n: number, repo = DEMO) => `https://github.com/${repo}/issue
 export const DIR = '/work/repo/.superpowers/sdd/12'
 export const IGNORE = '/work/repo/.superpowers/sdd/.gitignore'
 
-export type Spawned = { argv: string[]; cwd?: string; input?: string }
-export type Reply = { stdout?: string; stderr?: string; code?: number }
+export type Spawned = { argv: string[]; cwd?: string; input?: string; timeoutMs?: number }
+export type Reply = { stdout?: string; stderr?: string; code?: number; truncated?: boolean }
 export type World = { spawned: Spawned[]; written: Record<string, string>; registered: string[] }
 export type Verdict = { decision: 'allow' | 'ask' | 'deny'; reason?: string; rule?: string; plugin?: string }
 
@@ -30,13 +30,11 @@ export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply;
   on('tool.check', (_, e) => o.check?.(e) ?? { decision: 'allow' })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('skill.prompt', (_, e) => ({ text: e.text }))
-  on('process.spawn', async function* (_, e) {
-    const s: Spawned = { argv: [...e.argv], cwd: e.cwd, input: e.input }
+  on('process.run', (_, e) => {
+    const s: Spawned = { argv: [...e.argv], cwd: e.init?.cwd, input: e.init?.stdin, timeoutMs: e.init?.timeoutMs }
     w.spawned.push(s)
     const r = o.reply(s)
-    if (r.stdout) yield { stream: 'stdout' as const, text: r.stdout }
-    if (r.stderr) yield { stream: 'stderr' as const, text: r.stderr }
-    return { value: { code: r.code ?? 0, signal: null } }
+    return { value: { exitCode: r.code ?? 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '', isStdoutTruncated: r.truncated ?? false, isStderrTruncated: false } }
   })
   on('fs.read', (_, e) => (isFile(e.path) ? { value: files[e.path]! } : { deny: `ENOENT: ${e.path}` }))
   on('fs.write', (_, e) => {
@@ -55,10 +53,9 @@ export async function boot($: Engine, on: On, o: { reply: (s: Spawned) => Reply;
   return w
 }
 
-let calls = 0
-
+// The call gets its own tool_use_id from the engine, as a live one does.
 export async function callTool($: Engine, name: string, input: Record<string, unknown>): Promise<{ text?: string; deny?: string }> {
-  const r = await $.tool.call({ ...input, tool: `${TOOL_PREFIX}${name}` as const, tool_use_id: `toolu_test_${++calls}` })
+  const r = await $.tool.call({ ...input, tool: `${TOOL_PREFIX}${name}` as const })
   if (r.deny !== undefined) return { deny: r.deny }
   if (r.isError) return { deny: r.text }
   return { text: r.result as string }
@@ -99,7 +96,8 @@ export function repoData(o: { repo?: string; isPrivate?: boolean; boards?: strin
 }
 
 // With `parent`, `tasks` are the parent's sub-issues and `own` the issue's own; otherwise `tasks` are the issue's own.
-export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; own?: ItemSpec[]; board?: number; repo?: string }): unknown {
+// The same answer carries the repo and its boards (repoData's options), as the one Work read asks for both.
+export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSpec[]; own?: ItemSpec[]; board?: number; repo?: string; isPrivate?: boolean; boards?: string[] }): unknown {
   const [repo, board, tasks] = [o.repo ?? DEMO, o.board ?? 1, o.tasks ?? []]
   const issue = (s: ItemSpec) => ({
     number: s.number,
@@ -114,7 +112,8 @@ export function workData(o: { issue: ItemSpec; parent?: ItemSpec; tasks?: ItemSp
   })
   const subIssues = (specs: ItemSpec[]) => ({ nodes: specs.map(issue) })
   const parent = o.parent ? { ...issue(o.parent), subIssues: subIssues(tasks) } : null
-  return { repository: { issue: { ...issue(o.issue), subIssues: subIssues(o.own ?? (o.parent ? [] : tasks)), parent } } }
+  const { repository } = repoData(o) as { repository: object }
+  return { repository: { ...repository, issue: { ...issue(o.issue), subIssues: subIssues(o.own ?? (o.parent ? [] : tasks)), parent } } }
 }
 
 export function closingRefsData(o: { body: string; closes: number[]; repo?: string; base?: string }): unknown {

@@ -2,11 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import { PATCHED_FOR, TOOL_PREFIX } from '../../hooks/config'
 import { brainstorming } from '../../hooks/patches/brainstorming'
 import { applyPatches, blockText, type PatchSet } from '../../hooks/patches/engine'
-import { executingPlans } from '../../hooks/patches/executing-plans'
 import { finishing } from '../../hooks/patches/finishing'
 import { subagentDrivenDevelopment } from '../../hooks/patches/subagent-driven-development'
 import { writingPlans } from '../../hooks/patches/writing-plans'
-import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { SKILLS } from '../fixtures/superpowers'
 import { boot, router } from '../kit'
 
 const SET: PatchSet = { skill: 'superpowers:demo', patches: [
@@ -38,23 +37,32 @@ test('the block text names the skill, the version, the patch, the remedy and the
 })
 test('a skill whose anchor is missing comes back as the block text with the installed version', async ($, on) => {
   await boot($, on, { reply: router({}), files: { '/sp/9.0.0/.claude-plugin/plugin.json': '{"version":"9.0.0"}' } })
-  const { text } = await $.skill.prompt({ skill: 'superpowers:executing-plans', text: 'something else', path: '/sp/9.0.0/skills/executing-plans/SKILL.md' })
-  expect(text).toContain('superpowers-github blocked superpowers:executing-plans: superpowers 9.0.0')
+  const { text } = await $.skill.prompt({ skill: 'superpowers:brainstorming', text: 'something else', path: '/sp/9.0.0/skills/brainstorming/SKILL.md' })
+  expect(text).toContain('superpowers-github blocked superpowers:brainstorming: superpowers 9.0.0')
 })
+test('the superpowers root is the folder just above skills/, even under a folder that is also named skills', async ($, on) => {
+  const root = '/home/u/skills/superpowers'
+  await boot($, on, { reply: router({}), files: { [`${root}/.claude-plugin/plugin.json`]: '{"version":"9.0.0"}' } })
+  const { text } = await $.skill.prompt({ skill: 'superpowers:brainstorming', text: 'something else', path: `${root}/skills/brainstorming/SKILL.md` })
+  expect(text).toContain('superpowers 9.0.0')
+  expect(text).toContain(`make-fixture.mjs ${root}\``)
+})
+
 test('a skill whose anchors all match under another superpowers version runs patched, under one line naming both versions', async ($, on) => {
   const json = (v: string) => ({ [`/sp/${v}/.claude-plugin/plugin.json`]: JSON.stringify({ version: v }) })
   await boot($, on, { reply: router({}), files: { ...json(PATCHED_FOR), ...json('9.9.9') } })
-  const prompt = async (v: string) => (await $.skill.prompt({ skill: 'superpowers:executing-plans', text: SKILLS['executing-plans'], path: `/sp/${v}/skills/executing-plans/SKILL.md` })).text
-  expect(await prompt(PATCHED_FOR)).toBe(executingPlans.replaceWith)
+  const prompt = async (v: string) => (await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILLS['brainstorming'], path: `/sp/${v}/skills/brainstorming/SKILL.md` })).text
+  const patched = applyPatches(SKILLS['brainstorming'], brainstorming).text
+  expect(await prompt(PATCHED_FOR)).toBe(patched)
   const text = await prompt('9.9.9')
   const [line] = text.split('\n')
-  expect(text).toBe(`${line}\n\n${executingPlans.replaceWith}`)
+  expect(text).toBe(`${line}\n\n${patched}`)
   for (const s of [`superpowers ${PATCHED_FOR}`, 'superpowers 9.9.9']) expect(line).toContain(s)
 })
 test('a failure beneath the guard makes the skill a block, never the unpatched text', async $ => {
   // No boot, so no skill.prompt stand-in: the kit's bottom hook throws. (A stand-in that throws is skipped, as a live hook is.)
-  const { text } = await $.skill.prompt({ skill: 'superpowers:executing-plans', text: SKILLS['executing-plans'] })
-  for (const s of ['superpowers-github blocked superpowers:executing-plans', 'hook-error']) expect(text).toContain(s)
+  const { text } = await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILLS['brainstorming'] })
+  for (const s of ['superpowers-github blocked superpowers:brainstorming', 'hook-error']) expect(text).toContain(s)
 })
 test('every tool the patched skills name is one the mod registers', async ($, on) => {
   const w = await boot($, on, { reply: router({}) })

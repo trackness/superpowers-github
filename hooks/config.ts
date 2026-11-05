@@ -1,5 +1,5 @@
 export const PLUGIN = 'superpowers-github'
-export const TOOL_PREFIX = 'mcp__superpowers-github__'
+export const TOOL_PREFIX = `mcp__${PLUGIN}__`
 export const PATCHED_FOR = '7.0.0'
 export const IDEAS_REPO = 'trackness/ideas'
 export const BODY_LIMIT = 65_536

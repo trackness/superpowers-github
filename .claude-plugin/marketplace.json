@@ -1,5 +1,6 @@
 {
   "name": "superpowers-github",
   "owner": { "name": "trackness" },
+  "description": "The superpowers-github mod: keeps superpowers' ideas, designs, plans and tasks in GitHub issues on a per-repo board.",
   "plugins": [{ "name": "superpowers-github", "source": "./" }]
 }
