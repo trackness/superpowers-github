@@ -20,5 +20,6 @@ import { workListTool } from './tools/work-list'
 
 export const register: Register = on => {
   registerTools(on, [runFolderTool, reviewPackageTool, statusTool, workListTool, issueCreateTool, issueEditTool, attachTool, designWriteTool, boardSetupTool, ideaMoveTool, prCheckTool])
-  registerPatches(on, [executingPlans, brainstorming, writingPlans, subagentDrivenDevelopment, finishing])
+  registerPatches(on, [brainstorming, writingPlans, subagentDrivenDevelopment, finishing])
+  on('skill.prompt', { skill: executingPlans.skill }, () => ({ text: executingPlans.text }))
 }

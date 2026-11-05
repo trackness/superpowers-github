@@ -1,6 +1,7 @@
 import { link, linkWithColumn, readWork } from '../github/board'
 import { graphql, ModelFacingError } from '../github/gh'
 import { str, type Tool } from './engine'
+import { PARENT } from './run-folder'
 
 const HEADING = '## Plan changes made during the run'
 
@@ -37,7 +38,7 @@ export const prCheckTool: Tool = {
     inputSchema: {
       type: 'object',
       properties: {
-        parent: { type: 'string', description: 'The parent issue: its URL (https://github.com/<owner>/<repo>/issues/<number>) or <owner>/<repo>#<number>.' },
+        parent: PARENT,
         pr: { type: ['number', 'string'], description: 'The opened PR: its number or URL. Leave it out to check the gate before opening one.' },
       },
       required: ['parent'],

@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 // What helpers may call on `$`. The engine refuses to load a module that hands `$` itself to a
 // function, so the hook builds this from closures that spell `$.noun.method(...)` (registerTools).
 export type Io = {
-  process: Pick<EngineInterface['process'], 'spawn'>
+  process: Pick<EngineInterface['process'], 'run'>
   fs: Pick<EngineInterface['fs'], 'write' | 'exists' | 'stat'> & { read: (path: string) => Promise<string> } // text only: $.fs.read is overloaded
 }
 
@@ -12,16 +12,14 @@ export class ModelFacingError extends Error {}
 export type Ran = { code: number; stdout: string; stderr: string }
 type RunOptions = { cwd?: string; input?: string }
 
+// The engine's longest: a gh-image upload goes through a browser session.
+const TIMEOUT_MS = 600_000
+
 export async function run(io: Io, argv: string[], opts: RunOptions = {}): Promise<Ran> {
-  const child = io.process.spawn({ argv, ...opts })
-  let stdout = ''
-  let stderr = ''
-  for await (const { stream, text } of child) {
-    if (stream === 'stdout') stdout += text
-    else stderr += text
-  }
-  const { code } = await child.result
-  return { code: code ?? 1, stdout, stderr } // a signal reads as code 1
+  const r = await io.process.run(argv, { cwd: opts.cwd, stdin: opts.input, timeoutMs: TIMEOUT_MS })
+  // A cut output would parse, or be written, as if whole.
+  if (r.isStdoutTruncated) throw new ModelFacingError(`\`${argv.join(' ')}\` printed more than 4 MiB, more than the engine passes on: nothing was done with its output.`)
+  return { code: r.exitCode, stdout: r.stdout, stderr: r.stderr }
 }
 
 export async function runOk(io: Io, argv: string[], opts?: RunOptions): Promise<string> {

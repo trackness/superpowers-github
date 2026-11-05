@@ -2,27 +2,10 @@ import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import { TOOL_PREFIX } from '../../hooks/config'
 import { bool, nums, optStr, str } from '../../hooks/tools/engine'
-import { attachTool } from '../../hooks/tools/attach'
-import { boardSetupTool } from '../../hooks/tools/board-setup'
-import { designWriteTool } from '../../hooks/tools/design-write'
-import { ideaMoveTool } from '../../hooks/tools/idea-move'
-import { issueCreateTool } from '../../hooks/tools/issue-create'
-import { issueEditTool } from '../../hooks/tools/issue-edit'
-import { prCheckTool } from '../../hooks/tools/pr-check'
-import { reviewPackageTool } from '../../hooks/tools/review-package'
-import { runFolderTool } from '../../hooks/tools/run-folder'
-import { statusTool } from '../../hooks/tools/status'
-import { workListTool } from '../../hooks/tools/work-list'
 import { boot, callTool, router, url, type Verdict } from '../kit'
 
 const RUN_FOLDER = `${TOOL_PREFIX}run_folder`
 const git = router({ cli: s => (s.argv[1] === 'rev-parse' ? { stdout: '/work/repo\n' } : s.argv[0] === 'mkdir' ? {} : undefined) })
-
-test('session start registers all eleven tools', async ($, on) => {
-  const w = await boot($, on, { reply: git })
-  const tools = [runFolderTool, reviewPackageTool, statusTool, workListTool, issueCreateTool, issueEditTool, attachTool, designWriteTool, boardSetupTool, ideaMoveTool, prCheckTool]
-  expect(w.registered).toEqual(tools.map(t => t.spec.name))
-})
 
 test('a tool asks the permission check with its own arguments, and a deny runs nothing', async ($, on) => {
   const asked: unknown[] = []

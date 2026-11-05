@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, repoData, router, type Spawned, url, workData, type World } from '../kit'
+import { argvs, boot, callTool, router, type Spawned, url, workData, type World } from '../kit'
 
 const ZIP = 'https://github.com/user-attachments/files/3/visual-companion.zip'
 const IDEA = 'https://github.com/user-attachments/files/8/idea.md'
@@ -7,7 +7,6 @@ const IDEA = 'https://github.com/user-attachments/files/8/idea.md'
 const world = (o: { status?: 'Idea' | 'Designed'; body: string; bodyAfterUpload?: string; tasks?: number[]; editFails?: boolean; statusFails?: boolean }) =>
   router({
     graphql: {
-      Repo: () => repoData({}),
       Work: () => workData({ issue: { number: 10, status: o.status ?? 'Idea', body: o.body }, tasks: (o.tasks ?? []).map(number => ({ number })) }),
     },
     cli: (s: Spawned) => {

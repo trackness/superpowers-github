@@ -1,4 +1,4 @@
-import { type Status } from '../config'
+import { BODY_LIMIT, type Status } from '../config'
 import { assertWritable, type Board, created, createIssue, failedAfter, link, readWork, recomputeParent, repoInfo, requireBoard, setStatus, type Work } from '../github/board'
 import { checkBody } from '../github/body'
 import { ModelFacingError } from '../github/gh'
@@ -7,7 +7,7 @@ import { nums, optStr, str, type Tool } from './engine'
 export const issueCreateTool: Tool = {
   spec: {
     name: 'issue_create',
-    description: 'Creates an issue on its repo\'s board. With `parent` it creates a task (sub-issue) of that issue: the title must start "Task <n>: ", `blockedBy` lists the issue numbers it waits on, and it goes to Todo, which recomputes the parent\'s column. Without `parent`, `repo` is required and the issue goes to `status` Idea (default) or Designed. The body is checked against GitHub\'s 65,536-character limit first; nothing is split or truncated. If a step after the create fails, the error names the created issue: do not create it again.',
+    description: `Creates an issue on its repo's board. With \`parent\` it creates a task (sub-issue) of that issue: the title must start "Task <n>: ", \`blockedBy\` lists the issue numbers it waits on, and it goes to Todo, which recomputes the parent's column. Without \`parent\`, \`repo\` is required and the issue goes to \`status\` Idea (default) or Designed. The body is checked against GitHub's ${BODY_LIMIT.toLocaleString('en-US')}-character limit first; nothing is split or truncated. If a step after the create fails, the error names the created issue: do not create it again.`,
     inputSchema: {
       type: 'object',
       properties: {

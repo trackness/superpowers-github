@@ -1,3 +1,4 @@
+import { BODY_LIMIT } from '../config'
 import { assertWritable, issueBody, repoInfo } from '../github/board'
 import { attachmentUrls, checkBody } from '../github/body'
 import { gh, ModelFacingError, parseIssue } from '../github/gh'
@@ -6,7 +7,7 @@ import { nums, optStr, str, type Tool } from './engine'
 export const issueEditTool: Tool = {
   spec: {
     name: 'issue_edit',
-    description: 'Edits an issue\'s body, title or blocked-by links. `appendBody` adds a section to the end of the body GitHub holds, so nothing already there is retyped. A new body is checked against GitHub\'s 65,536-character limit, and is refused if it drops an attachment (https://github.com/user-attachments/…) the current body references: keep them in the ## Attachments list.',
+    description: `Edits an issue's body, title or blocked-by links. \`appendBody\` adds a section to the end of the body GitHub holds, so nothing already there is retyped. A new body is checked against GitHub's ${BODY_LIMIT.toLocaleString('en-US')}-character limit, and is refused if it drops an attachment (https://github.com/user-attachments/…) the current body references: keep them in the ## Attachments list.`,
     inputSchema: {
       type: 'object',
       properties: {

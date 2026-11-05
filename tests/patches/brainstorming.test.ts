@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { applyPatches } from '../../hooks/patches/engine'
 import { brainstorming } from '../../hooks/patches/brainstorming'
-import { SKILLS } from '../fixtures/superpowers-7.0.0'
+import { SKILLS } from '../fixtures/superpowers'
 import { boot, router } from '../kit'
 
 const ABSENT = ['docs/superpowers/specs/', '<session>', 'read its body with `gh issue view <url>`']
@@ -25,8 +25,8 @@ const PRESENT = [
 ]
 const patched = () => applyPatches(SKILLS['brainstorming'], brainstorming)
 test('every brainstorming patch applies to the 7.0.0 text as counted', () => expect(patched().failures).toEqual([]))
-test('the patched brainstorming keeps nothing the mod replaces', () => { for (const s of ABSENT) expect(patched().text).not.toContain(s) })
-test("the patched brainstorming says what the mod does instead", () => { for (const s of PRESENT) expect(patched().text).toContain(s) })
+test('the patched brainstorming keeps nothing the mod replaces', () => { const t = patched().text; expect(ABSENT.filter(s => t.includes(s))).toEqual([]) })
+test("the patched brainstorming says what the mod does instead", () => { const t = patched().text; expect(PRESENT.filter(s => !t.includes(s))).toEqual([]) })
 test('brainstorming reaches the model patched', async ($, on) => {
   await boot($, on, { reply: router({}) })
   const text = 'Base directory for this skill: /x\n\n' + SKILLS['brainstorming'].replace(/^---\n[\s\S]*?\n---\n\n/, '')

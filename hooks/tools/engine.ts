@@ -61,7 +61,7 @@ export function registerTools(on: On, tools: Tool[]): void {
         return { deny: `${PLUGIN} ${name} did not run: its permission check failed: ${err instanceof Error ? err.message : String(err)}` }
       }
       const io: Io = {
-        process: { spawn: request => $.process.spawn(request) },
+        process: { run: (argv, init) => $.process.run(argv, init) },
         fs: {
           read: path => $.fs.read(path),
           write: (path, text) => $.fs.write(path, text),

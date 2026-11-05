@@ -45,6 +45,12 @@ test('review_package refuses a ref that names no commit', async ($, on) => {
   expect((await callTool($, 'review_package', RANGE)).deny).toBe('bad BASE: abc')
 })
 
+test('a diff the engine cut at 4 MiB is refused, not written as if whole', async ($, on) => {
+  const w = await boot($, on, { reply: gitForReviewPackage({ [`git diff -U10 ${A}..${B}`]: { stdout: 'diff --git a/x.ts b/x.ts\n', truncated: true } }) })
+  expect((await callTool($, 'review_package', RANGE)).deny).toContain('more than 4 MiB')
+  expect(Object.keys(w.written)).toEqual([IGNORE])
+})
+
 test('a review package over 4 MiB is refused by the write, and the refusal reaches the model', async ($, on) => {
   const w = await boot($, on, { reply: gitForReviewPackage({ [`git diff -U10 ${A}..${B}`]: { stdout: 'x'.repeat(4 * 1024 * 1024) } }) })
   const r = await callTool($, 'review_package', RANGE)

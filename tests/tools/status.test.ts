@@ -1,17 +1,17 @@
 import { expect, test } from 'claude-code/testing'
-import { argvs, boot, callTool, type ItemSpec, repoData, router, url, workData, type World } from '../kit'
+import { argvs, boot, callTool, type ItemSpec, router, url, workData, type World } from '../kit'
 
 const edit = (n: number, s: string, board = 1) => `gh project item-edit ${board} --owner trackness --url ${url(n)} --field Status --value ${s}`
 const add = (n: number, board = 1) => `gh project item-add ${board} --owner trackness --url ${url(n)}`
 const projectCalls = (w: World) => argvs(w).filter(a => a.startsWith('gh project'))
 
-const world = (work: unknown, repo = repoData({})) =>
-  router({ graphql: { Repo: () => repo, Work: typeof work === 'function' ? () => work() : () => work }, cli: s => (s.argv[1] === 'project' ? {} : undefined) })
+const world = (work: unknown) =>
+  router({ graphql: { Work: typeof work === 'function' ? () => work() : () => work }, cli: s => (s.argv[1] === 'project' ? {} : undefined) })
 
 const task11 = (parent: ItemSpec, tasks: ItemSpec[]) => workData({ issue: tasks.find(t => t.number === 11)!, parent, tasks })
 
 test('the board is the one titled exactly the repo name', async ($, on) => {
-  const w = await boot($, on, { reply: world(workData({ issue: { number: 10, status: 'Idea' }, board: 3 }), repoData({ boards: ['demo-old', 'Demo', 'demo'] })) })
+  const w = await boot($, on, { reply: world(workData({ issue: { number: 10, status: 'Idea' }, board: 3, boards: ['demo-old', 'Demo', 'demo'] })) })
   const r = await callTool($, 'status', { issue: url(10), status: 'Designed' })
   expect(r.deny).toBeUndefined()
   expect(argvs(w)).toContain(edit(10, 'Designed', 3))
@@ -107,7 +107,7 @@ test('status does not blame "Item closed" for a closed issue that is not on the 
 })
 
 test('status refuses a repo with no board', async ($, on) => {
-  await boot($, on, { reply: world(workData({ issue: { number: 10, status: 'Idea' } }), repoData({ boards: [] })) })
+  await boot($, on, { reply: world(workData({ issue: { number: 10, status: 'Idea' }, boards: [] })) })
   expect((await callTool($, 'status', { issue: url(10) })).deny).toContain('board_setup')
 })
 
